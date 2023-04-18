@@ -1,0 +1,4 @@
+conda install tqdm pandas matplotlib natsort
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+conda install -c conda-forge torchinfo 
+

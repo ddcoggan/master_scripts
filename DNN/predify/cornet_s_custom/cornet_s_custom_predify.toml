@@ -1,0 +1,41 @@
+# network name (default: "Network")
+name = "cornet_s_custom_predify"
+
+# imports for prediction modules (mandatory if custom predictor modules are defined)
+imports = [
+"from torch.nn import Sequential, ConvTranspose2d, Upsample",
+]
+
+# indicates utilization of automatic gradient scaling (default: false)
+gradient_scaling = true
+
+# to use shared or separate hyperparameters for PCoders (default: false)
+shared_hyperparameters = false
+
+# input size [channels, height, width] (mandatory)
+input_size = [3, 224, 224]
+
+# pcoders (defining [[pcoders]] for each PCoder is mandatory). Order is important.
+# module (mandatory): pytorch name of each module in the target network to be converted into an encoder
+# predictor (optional): the pytorch module for generating predictions. By default, it will be upsample+conv_transpose)
+# hyperparameters (optional): default value is {feedforward=0.3, feedback=0.3, pc=0.01}. If shared_hyperparameters=true, the values of the first PCoder will be used for all of them.
+
+[[pcoders]]
+module = "V1.cycle0"
+hyperparameters = {feedforward=0.2, feedback=0.05, pc=0.01}
+
+[[pcoders]]
+module = "V1.CORblock"
+hyperparameters = {feedforward=0.4, feedback=0.01, pc=0.01}
+
+[[pcoders]]
+module = "V2"
+hyperparameters = {feedforward=0.4, feedback=0.01, pc=0.01}
+
+[[pcoders]]
+module = "V4"
+hyperparameters = {feedforward=0.5, feedback=0.01, pc=0.01}
+
+[[pcoders]]
+module = "IT"
+hyperparameters = {feedforward=0.6, feedback=0.00, pc=0.01}

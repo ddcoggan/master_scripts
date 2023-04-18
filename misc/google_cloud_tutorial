@@ -1,0 +1,32 @@
+Notes on setting up google cloud training on TPUs
+
+- Make Google Cloud account, see if you can get the free $300 of resources
+- Create project
+- Add storage bucket and upload all required data (imagenet, custom modules, models, etc). This is optional as these can be uploaded from local machine to VM without a bucket.
+- Create Compute VM on Google Cloud, either through google cloud browser gui/console or any terminal with gcloud installed and connected to account using code like this:
+
+gcloud compute instances create occlusion-vm \
+--zone=us-east1-b \
+--machine-type=n1-highmem-96  \
+--image-family=torch-xla \
+--image-project=ml-images  \
+--boot-disk-size=300GB \
+--scopes=https://www.googleapis.com/auth/cloud-platform
+
+- Install Google Cloud Code plugin for pycharm (https://cloud.google.com/code/docs/intellij/install#installing)
+- Locate VM in pycharm and start ssh connection
+- Upload required data to the VM, either from storage bucket or from local machine
+- Start a cloud TPU, can be done on the browser gui/console or through the command line on the VM:
+
+gcloud compute tpus create occlusion-tpu \
+--zone=us-east1-b \
+--network=default \
+--version=pytorch-2.0 \
+--accelerator-type=v3-8
+
+- Upload scripts and execute on VM
+
+
+https://cloud.google.com/tpu/docs/tutorials/resnet-pytorch for a tutorial on using cloud TPUs to train a resnet using pytorch
+
+

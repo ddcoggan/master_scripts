@@ -1,0 +1,176 @@
+### setting up ubuntu workstation ###
+
+1. install ubuntu operating system
+
+2. update system to latest:
+
+sudo apt update
+sudo apt upgrade
+
+3. install pycharm and matlab (can be done through ubuntu software app / mathworks website)
+
+4. install gcc and cuda (see instructions at https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
+
+# these are the instructions as of 22-10-05
+sudo apt install build-essential
+sudo apt-get install linux-headers-$(uname -r)
+sudo apt-key del 7fa2af80
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin
+sudo mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
+wget https://developer.download.nvidia.com/compute/cuda/11.7.1/local_installers/cuda-repo-ubuntu2204-11-7-local_11.7.1-515.65.01-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu2204-11-7-local_11.7.1-515.65.01-1_amd64.deb
+sudo cp /var/cuda-repo-ubuntu2204-11-7-local/cuda-*-keyring.gpg /usr/share/keyrings/
+sudo apt-get update
+sudo apt-get -y install cuda
+reboot
+
+5. install anaconda
+download from https://www.anaconda.com/products/distribution
+bash ~/Downloads/Anaconda3-2022.05-Linux-x86_64.sh
+
+6. install DL tools in pycharm terminal 
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+
+
+7. add necessary datasets under ~/Datasets/
+8. add/make a project directory under ~/<your name>/
+
+# install and set up ssh
+sudo apt install ssh
+ssh-keygen -t ed25519 -C "david"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+
+### SYNOLOGY BACK UP ###
+# set up passwordless ssh into synology with this guide:
+https://stamler.ca/enable-passwordless-ssh-on-synology-dsm6/
+
+# ssh into synology
+ssh david@DDCNAS.local
+
+# sync data manually on finn with mirrored folder on synology NAS
+rsync -aL --copy-links --progress /home/tonglab/david david@DDCNAS.local:/volume1/NetBackup/ # for progress bar on each file
+rsync -avL --copy-links /home/tonglab/david david@DDCNAS.local:/volume1/NetBackup/ # for just listing each file
+
+# sync data automatically on finn each day with mirrored folder on synology NAS
+(crontab -l; echo "00 2 * * * rsync -aL --copy-links --delete --ignore-errors /home/tonglab/david david@DDCNAS.local:/volume1/NetBackup/ > /dev/null 2>&1";) | crontab
+
+# record system log info daily
+(crontab -l; echo "58  23 * * * /bin/sh /home/tonglab/david/masterScripts/misc/sar_report.sh";) | crontab
+
+
+### MOUNT DRIVES AT OTHER WORKSTATIONS
+
+sudo mkdir /home/tonglab/david
+sudo mount.smb3 //10.32.132.238/ddc /home/tonglab/david -o user=tonglab,uid=tonglab
+
+
+### clone a virtual environment ###
+
+Do the following steps on the source machine:
+
+    workon [environment_name]
+    pip freeze > requirements.txt
+    copy requirements.txt to other PC
+
+On the other PC:
+
+    create a virtual environment using mkvirtualenv [environment_name]
+    workon [environment_name]
+    pip install -r requirements.txt
+
+
+### MATLAB TOOLS ###
+SPM
+MrTools
+PsychToolbox
+NORDIC_Raw
+
+
+### NEURO TOOLS ###
+FSL and Freesurfer
+TONGLAB WIKI: https://sites.google.com/view/tong-lab-wiki/
+sudo apt install meshlab
+
+
+
+### BASH PROFILE ADDITIONS
+FSLDIR=/usr/local/fsl
+. ${FSLDIR}/etc/fslconf/fsl.sh
+PATH=${FSLDIR}/bin:${PATH}
+PATH=/Applications/fsl/bin:${PATH}
+export FSLDIR PATH
+export FREESURFER_HOME=$HOME/david/freesurfer
+source $FREESURFER_HOME/SetUpFreeSurfer.sh
+
+alias refresh="source $HOME/.bashrc"
+alias matlab="/usr/local/MATLAB/R2022b/bin/matlab"
+
+
+### USE SUPER KEY FOR CUT/COPY/PASTE ###
+change shortcuts directly in terminal preferences
+see file called super_as_ctrl.xmodmap in the same folder as this document
+place the following command as an ubuntu start up apps:
+xmodmap super_as_ctrl.xmodmap
+
+
+### GIT ###
+sudo apt install git
+
+# to use git for version control and not just cloning repos
+
+# config git
+git config --global user.email "ddcoggan@icloud.com"
+git config --global user.name "ddcoggan"
+
+# github setup
+sudo apt install curl
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+&& sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+&& sudo apt update \
+&& sudo apt install gh -y
+gh auth login
+** follow steps **
+
+# always clone as ssh not http, eg:
+git clone git@github.com:ddcoggan/masterScripts
+git clone git@github.com:ddcoggan/p022_occlusion
+
+ssh -T git@github.com # check if you get asked for password and weren't expecting it, may need to hit 'yes' when prompted
+refresh # try if you are still asked for a password and werent expecting it
+
+# start new repo
+git init -b main
+git add journal && git commit -m "initial commit"
+gh repo create p019_objectSpace --private --source=. --remote=upstream --push
+
+
+# for my workstation
+# git commands
+alias multipull="find /mnt/HDD12TB/projects/. -maxdepth 2 -name .git -type d | rev | cut -c 6- | rev | xargs -I {} git -C {} pull;
+find $HOME/Dave/. -maxdepth 2 -name .git -type d | rev | cut -c 6- | rev | xargs -I {} git -C {} pull"
+
+alias multipush="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git add .; git commit -m '$(date)'; git push;
+printf '\n\np022_occlusion\n'; cd /mnt/HDD12TB/projects/p022_occlusion; git add DNN/analysis/scripts/.; git commit -m '$(date)'; git push;
+printf '\n\np021_convParamSpace\n'; cd /mnt/HDD12TB/projects/p021_convParamSpace; git add scripts/.; git commit -m '$(date)'; git push;
+printf '\n\np019_objectSpace\n'; cd /mnt/HDD12TB/projects/p019_objectSpace; git add analysis/scripts/.; git commit -m '$(date)'; git push;"
+
+# for all other workstations
+# git commands
+alias multipull="find $HOME/Dave/. -maxdepth 2 -name .git -type d | rev | cut -c 6- | rev | xargs -I {} git -C {} pull"
+
+alias multireset="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git reset --hard origin/main;
+printf '\n\np022_occlusion\n'; cd $HOME/Dave/p022_occlusion; git reset --hard origin/main;"
+
+alias multipush="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git add .; git commit -m '$(date)'; git push;
+printf '\n\np022_occlusion\n'; cd $HOME/Dave/p022_occlusion; git add DNN/analysis/scripts/.; git commit -m '$(date)'; git push;"
+
+# mount finn folders to folders on another workstation
+sudo mkdir /mnt/Dave
+sudo mount -t cifs //10.32.132.128/Dave /mnt/Dave --verbose -o user=dave
+
+
+
+
