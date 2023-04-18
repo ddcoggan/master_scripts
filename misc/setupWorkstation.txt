@@ -135,7 +135,7 @@ gh auth login
 ** follow steps **
 
 # always clone as ssh not http, eg:
-git clone git@github.com:ddcoggan/masterScripts
+git clone git@github.com:ddcoggan/master_scripts
 git clone git@github.com:ddcoggan/p022_occlusion
 
 ssh -T git@github.com # check if you get asked for password and weren't expecting it, may need to hit 'yes' when prompted
