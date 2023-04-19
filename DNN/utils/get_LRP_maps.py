@@ -12,7 +12,7 @@ from PIL import Image
 import json
 import pickle
 import sys
-sys.path.append(os.path.expanduser('~/david/repos'))
+sys.path.append(op.expanduser('~/david/repos'))
 from layerwise_relevance_propagation import lrp
 from matplotlib.colors import ListedColormap
 

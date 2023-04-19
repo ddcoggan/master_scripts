@@ -102,7 +102,7 @@ def train_model(CFG):
 
     if not hasattr(T, 'checkpoint') or T.checkpoint is None:
 
-        # set starting point
+        # get most recent checkpoint if not specified
         params_paths = sorted(glob.glob(f'{M.model_dir}/params/*.pt'))
         if params_paths:
             T.checkpoint = int(params_paths[-1][-6:-3])
@@ -117,7 +117,7 @@ def train_model(CFG):
         print('Loading previous model state')
 
         # if training interrupted during eval of last epoch, finish this before continuing
-        if not len(epoch_stats[(epoch_stats['epoch'] == T.checkpoint) & (epoch_stats['train_eval'] == 'eval')]):
+        if T.checkpoint > 0 and not len(epoch_stats[(epoch_stats['epoch'] == T.checkpoint) & (epoch_stats['train_eval'] == 'eval')]):
             next_epoch = T.checkpoint
             train_evals = ['eval']
         else:
@@ -153,10 +153,13 @@ def train_model(CFG):
     if T.checkpoint is not None:
         from utils import load_params
         optimizer = load_params(params, optimizer=optimizer)
+        scheduler_chkpt = T.checkpoint
+    else:
+	    scheduler_chkpt = 0  # scheduler requires checkpoint not to be None
 
     # scheduler to adapt optimizer parameters throughout training
     if T.scheduler == 'StepLR':
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=T.step_size, last_epoch=T.checkpoint)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=T.step_size, last_epoch=scheduler_chkpt)
     if T.scheduler == 'ReduceLROnPlateau':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
@@ -297,6 +300,7 @@ def train_model(CFG):
             new_stats = {'time': [datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")], 'epoch': [epoch], 'train_eval': [train_eval]}
             new_stats = {**new_stats, **{key: np.array(item, dtype="float16") for key, item in epoch_tracker.items()}}
             epoch_stats = pd.concat([epoch_stats, pd.DataFrame(new_stats)]).reset_index(drop=True)
+            epoch_stats = epoch_stats.sort_values(by=['epoch','train_eval'], ascending=[True,False]).reset_index(drop=True)
             epoch_stats.to_csv(epoch_stats_path)
 
             # plot performance
@@ -336,7 +340,7 @@ def train_model(CFG):
                 torch.save(params, epoch_save_path)
 
                 # delete old state
-                if epoch > 1 and (epoch - 1) % M.save_interval != 0:
+                if epoch > 1 and M.save_interval > 1 and (epoch - 1) % M.save_interval != 0:
                     last_save_path = f"{M.model_dir}/params/{epoch - 1:03}.pt"
                     os.remove(last_save_path)
 

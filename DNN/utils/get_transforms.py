@@ -35,7 +35,8 @@ def get_transforms(D, T):
         # train
         train_sequence = [
             transforms.ToTensor(),
-            transforms.RandomResizedCrop(256),  # resize (smallest edge becomes this length)
+            transforms.Resize(256),  # resize (smallest edge becomes this length)
+            transforms.RandomCrop(256),  # make square
             AlterImages(D, T),
             transforms.RandomHorizontalFlip(),
             #transforms.RandomRotation(10),

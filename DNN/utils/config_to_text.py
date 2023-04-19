@@ -39,4 +39,5 @@ def config_to_text(CFG):
 
 if __name__ == '__main__':
 
-    #config_to_text('/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models/cornet_s_custom/deep-head_occ-beh/config.pkl')
+    config = '/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models/cornet_s_custom/deep-head_occ-beh/config.pkl'
+    #config_to_text(config)
