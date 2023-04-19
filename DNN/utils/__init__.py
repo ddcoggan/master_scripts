@@ -16,7 +16,6 @@ from .save_image_custom import save_image_custom
 from .get_activations import get_activations
 from .test_model import test_model
 from .train_model import train_model
-from .train_model_tpu import train_model_tpu
 from .ContrastiveLoss import ContrastiveLoss
 from .configure_hardware import configure_hardware
 from .calculate_batch_size import calculate_batch_size
