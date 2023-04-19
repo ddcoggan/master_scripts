@@ -23,7 +23,7 @@ from .cornet_z import CORnet_Z as cornet_z
 #from .cornet_s_custom_predify import *
 from .locCon1HL import *
 from .prednet import *
-from . import segmentation
-from . import detection
-from . import video
-from . import quantization
+#from . import segmentation
+#from . import detection
+#from . import video
+#from . import quantization

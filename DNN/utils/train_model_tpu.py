@@ -41,7 +41,7 @@ from utils import accuracy
 torch.backends.cudnn.benchmark = True
 # torch.autograd.set_detect_anomaly(True)
 
-def train_model(CFG):
+def train_model_tpu(CFG):
 
     # unpack config
     M, D, T = CFG.M, CFG.D, CFG.T
@@ -57,8 +57,8 @@ def train_model(CFG):
 
     # image processing
     from utils import get_transforms
-    train_path = f'datasets/{D.dataset}/train'
-    val_path = f'datasets/{D.dataset}/val'
+    train_path = op.expanduser(f'~/Datasets/{D.dataset}/train')
+    val_path = op.expanduser(f'~/Datasets/{D.dataset}/val')
     transform_train, transform_val = get_transforms(D, T)
     train_data = ImageFolder(train_path, transform=transform_train)
     train_loader = DataLoader(train_data, batch_size=T.batch_size, shuffle=True, num_workers=T.num_workers)
@@ -114,6 +114,7 @@ def train_model(CFG):
         else:
             print('New model state created')
             print('New optimizer state created')
+            T.checkpoint = None  # make sure attribute exists
             next_epoch = 1
             train_evals = ['train', 'eval']
 

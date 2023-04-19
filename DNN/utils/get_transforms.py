@@ -14,7 +14,7 @@ def get_transforms(D, T):
     
         # train
         train_sequence = [
-            transforms.RandomResizedCrop((224,224)),
+            transforms.RandomResizedCrop((224,224), antialias=True),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -22,8 +22,8 @@ def get_transforms(D, T):
 
         # val
         val_sequence = [
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.Resize(256, antialias=True),
+            transforms.CenterCrop(224, antialias=True),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -35,22 +35,22 @@ def get_transforms(D, T):
         # train
         train_sequence = [
             transforms.ToTensor(),
-            transforms.Resize(256),  # resize (smallest edge becomes this length)
-            transforms.RandomCrop(256),  # make square
+            transforms.Resize(256, antialias=True),  # resize (smallest edge becomes this length)
+            transforms.RandomCrop(256, antialias=True),  # make square
             AlterImages(D, T),
             transforms.RandomHorizontalFlip(),
             #transforms.RandomRotation(10),
-            transforms.RandomCrop(224),
+            transforms.RandomCrop(224, antialias=True),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
 
         # val
         val_sequence = [
             transforms.ToTensor(),
-            transforms.Resize(256),  # resize (smallest edge becomes this length)
-            transforms.CenterCrop(256),  # make square
+            transforms.Resize(256, antialias=True),  # resize (smallest edge becomes this length)
+            transforms.CenterCrop(256, antialias=True),  # make square
             AlterImages(D, T),
-            transforms.CenterCrop(224),
+            transforms.CenterCrop(224, antialias=True),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
 
@@ -74,12 +74,12 @@ def get_remaining_transform(train_eval):
 
     # train
     train_sequence = [transforms.RandomHorizontalFlip(),
-                      transforms.RandomRotation(10),
-                      transforms.RandomCrop(224),
+                      #transforms.RandomRotation(10),
+                      transforms.RandomCrop(224, antialias=True),
                       transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
 
     # val
-    val_sequence = [transforms.CenterCrop(224),
+    val_sequence = [transforms.CenterCrop(224, antialias=True),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
 
     if train_eval == 'train':
