@@ -33,9 +33,9 @@ import torch_xla.debug.profiler as xp
 import torch_xla.utils.utils as xu
 import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.test.test_utils as test_utils
+torch.set_default_tensor_type('torch.FloatTensor')
 
-
-sys.path.append(op.expanduser('~/master_scripts/DNN'))
+sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
 from utils import accuracy
 
 torch.backends.cudnn.benchmark = True
@@ -62,8 +62,10 @@ def train_model_tpu(CFG):
     transform_train, transform_val = get_transforms(D, T)
     train_data = ImageFolder(train_path, transform=transform_train)
     train_loader = DataLoader(train_data, batch_size=T.batch_size, shuffle=True, num_workers=T.num_workers)
+    train_device_loader = pl.MpDeviceLoader(train_loader, device)
     val_data = ImageFolder(val_path, transform=transform_val)
     val_loader = DataLoader(val_data, batch_size=T.batch_size, shuffle=True, num_workers=T.num_workers)
+    val_device_loader = pl.MpDeviceLoader(val_loader, device)
 
     # loss functions
     if 'classification' in T.learning:
@@ -189,11 +191,11 @@ def train_model_tpu(CFG):
 
             # train/eval specific settings
             if train_eval == 'train':
-                loader = train_loader
+                loader = train_device_loader
                 log_string = 'Training'.ljust(10)
                 model.train() if epoch != 0 else model.eval()
             else:
-                loader = val_loader
+                loader = val_device_loader
                 log_string = 'Evaluating'
                 model.eval()
 
@@ -344,7 +346,7 @@ def train_model_tpu(CFG):
                 torch.save(params, epoch_save_path)
 
                 # delete old state
-                if epoch > 1 and (epoch - 1) % M.save_interval != 0:
+                if epoch > 1 and M.save_interval > 1 and (epoch - 1) % M.save_interval != 0:
                     last_save_path = f"{M.model_dir}/params/{epoch - 1:03}.pt"
                     os.remove(last_save_path)
 

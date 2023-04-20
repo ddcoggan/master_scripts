@@ -93,7 +93,7 @@ def occlude_image(inputs, D, T=None):
                 outputs[i, :, :, :] = image
 
                 # second image is translated slightly to avoid identical image portions during val
-                image_PIL = Image.fromarray(np.array(image.permute(1,2,0)*255, dtype=np.uint8)).convert('RGBA')
+                image_PIL = transforms.ToPILImage()(image).convert('RGBA')
                 x_shift = np.random.randint(41) - 20
                 y_shift = np.random.randint(41) - 20
                 image_PIL = image_PIL.rotate(0, translate=(x_shift, y_shift)) # doesn't actually rotate, just translates
@@ -108,7 +108,8 @@ def occlude_image(inputs, D, T=None):
         # if occlusion desired
         else:
 
-            image_PIL = Image.fromarray(np.array(image.permute(1,2,0)*255, dtype=np.uint8)).convert('RGBA')
+            image_PIL = transforms.ToPILImage()(image).convert('RGBA')
+
             occluders_PIL = []
 
             # get occlusion image

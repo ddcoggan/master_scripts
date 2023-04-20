@@ -103,7 +103,7 @@ class CORnetCustomHead(nn.Module):
         for out_channel in range(out_channels):
             for layer in range(head_depth):
                 setattr(self, f'linear_{out_channel + 1}_{layer+1}', nn.Linear(head_sizes[layer], head_sizes[layer+1]))
-                if layer < head_depth-1:
+                if layer < head_depth:
                     setattr(self, f'nonlin_{out_channel + 1}_{layer+1}', nn.ReLU(inplace=True))
 
             self.output = Identity()
@@ -123,7 +123,7 @@ class CORnetCustomHead(nn.Module):
 
                 x_out = getattr(self, f'linear_{out_channel+1}_{layer+1}')(x_out)
 
-                if layer < self.head_depth-1:
+                if layer < self.head_depth:
                     x_out = getattr(self, f'nonlin_{out_channel+1}_{layer+1}')(x_out)
 
             out.append(x_out)
@@ -135,34 +135,34 @@ class CORnetCustomHead(nn.Module):
             return out[0]
         
 
-def CORnet_S_custom(M):
+def CORnet_S_custom(m):
     
     # fill in any missing parameters with defaults
     defaults = {'R': (1,2,4,2), 'K': (3,3,3,3), 'F': (64,128,256,512), 'S': 4, 'out_channels': 1, 'head_depth': 1}
     for param, value in defaults.items():
-        if not hasattr(M, param):
-            setattr(M, param, value)
+        if not hasattr(m, param):
+            setattr(m, param, value)
 
     model = nn.Sequential(OrderedDict([('V1', nn.Sequential(OrderedDict([('cycle0', nn.Sequential(OrderedDict([
-                                                                                ('conv1', nn.Conv2d(3, M.F[0], kernel_size=7, stride=2, padding=3, bias=False)),
-                                                                                ('norm1', nn.BatchNorm2d(M.F[0])),
+                                                                                ('conv1', nn.Conv2d(3, m.F[0], kernel_size=7, stride=2, padding=3, bias=False)),
+                                                                                ('norm1', nn.BatchNorm2d(m.F[0])),
                                                                                 ('nonlin1', nn.ReLU(inplace=True)),
                                                                                 ('pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))]))),
-                                                                          ('CORblock', CORblock_S_custom(M.F[0], M.F[0], R=M.R[0], K=M.K[0], scale=M.S))]))),
-                                        ('V2', CORblock_S_custom(M.F[0], M.F[1], R=M.R[1], K=M.K[1], scale=M.S)),
-                                        ('V4', CORblock_S_custom(M.F[1], M.F[2], R=M.R[2], K=M.K[2], scale=M.S)),
-                                        ('IT', CORblock_S_custom(M.F[2], M.F[3], R=M.R[3], K=M.K[3], scale=M.S)),
-                                        ('decoder', CORnetCustomHead(M.F[3], M.out_channels, M.head_depth))]))
+                                                                          ('CORblock', CORblock_S_custom(m.F[0], m.F[0], R=m.R[0], K=m.K[0], scale=m.S))]))),
+                                        ('V2', CORblock_S_custom(m.F[0], m.F[1], R=m.R[1], K=m.K[1], scale=m.S)),
+                                        ('V4', CORblock_S_custom(m.F[1], m.F[2], R=m.R[2], K=m.K[2], scale=m.S)),
+                                        ('IT', CORblock_S_custom(m.F[2], m.F[3], R=m.R[3], K=m.K[3], scale=m.S)),
+                                        ('decoder', CORnetCustomHead(m.F[3], m.out_channels, m.head_depth))]))
 
     # weight initialization
     for mod in model.modules():
-        if isinstance(mod, nn.Conv2d):
+        if isinstance(m, nn.Conv2d):
             n = mod.kernel_size[0] * mod.kernel_size[1] * mod.out_channels
             mod.weight.data.normal_(0, math.sqrt(2. / n))
-        elif isinstance(mod, nn.Linear):
+        elif isinstance(m, nn.Linear):
             n = mod.in_features * mod.out_features
             mod.weight.data.normal_(0, math.sqrt(2. / n))
-        elif isinstance(mod, nn.BatchNorm2d):
+        elif isinstance(m, nn.BatchNorm2d):
             mod.weight.data.fill_(1)
             mod.bias.data.zero_()
 
