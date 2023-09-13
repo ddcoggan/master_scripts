@@ -12,8 +12,8 @@ import json
 import pickle
 
 
-def make_output_histograms(activationFile, imageName ='sample'):
-    activation = pickle.load(open(activationFile, 'rb'))
+def make_output_histograms(activation_file, image_name ='sample'):
+    activation = pickle.load(open(activation_file, 'rb'))
     for l in range(len(activation.keys())):
         a = activation[l].cpu()
         a = a.reshape(-1)
@@ -23,9 +23,9 @@ def make_output_histograms(activationFile, imageName ='sample'):
         plt.xlabel('Value')
         plt.ylabel('Frequency')
         plt.title(f'layer {l:02d}')
-        outDir = f'{os.path.dirname(activationFile)}/histograms'
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-        filename = f'{outDir}/layer{l:02d}.png'
-        plt.savefig(filename)
+        out_dir = f'{os.path._dir_name(activation_file)}/histograms'
+        if not os.path.exists(out_dir):
+            os.make_dirs(out_dir)
+        file_name = f'{out_dir}/layer{l:02d}.png'
+        plt.savefig(file_name)
         plt.close()

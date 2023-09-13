@@ -1,57 +1,54 @@
 import torch
 
-def load_params(params, model=None, optimizer=None):
+def load_params(params, dest_object, object_type, modules='all'):
 
 	# if the path to params is submitted (rather than params themselves), load params
 	if type(params) == str:
 		params = torch.load(params)
 
-	if model:
-		try:
-			model_params = params['model']
-		except:
-			model_params = params['state_dict']
-		params_loaded = False
-		try:  # try to load model as is
-			model.load_state_dict(model_params)
-			params_loaded = True
-		except:
+	key_config = {'model': ['model', 'state_dict'],
+				  'swa_model': ['swa_model'],
+				  'optimizer': ['optimizer'],
+				  'swa_optimizer': ['swa_optimizer'],
+				  'scheduler': ['scheduler'],
+				  'swa_scheduler': ['swa_scheduler']}
 
-			new_params = model_params.copy()
-			while list(new_params.keys())[0].startswith('module.'):
+	for key in key_config[object_type]:
+		if key in params:
+			source_params = params[key]
+			break
 
-				# remove 'module.' prefix from each key
-				new_params = {}
-				for key in model_params:
-					new_key = key[7:]
-					new_params[new_key] = model_params[key]
+	# resolve key errors arising when 'module.' is prefixed to key
+	dest_wrapped = list(dest_object.state_dict().keys())[0].startswith('module')
+	source_wrapped = list(source_params.keys())[0].startswith('module')
+	if source_wrapped == dest_wrapped:
+		resolved_params = source_params
+	elif dest_wrapped:
+		resolved_params = {f'module.{key}': values for key, values in source_params.items()}
+	else:
+		resolved_params = {key[7:]: values for key, values in source_params.items()}
+		if list(resolved_params.keys())[0].startswith('module'):
+			resolved_params = {key[7:]: values for key, values in
+							   resolved_params.items()}
+	# load params
+	if modules == 'all':
+		dest_object.load_state_dict(resolved_params)
+	else:
+		for module in modules:
 
-				# try to load params
-				try:
-					model.load_state_dict(new_params)
-					params_loaded = True
-				except:
-					continue
-
-			if not params_loaded:
-
-				# add 'module.' prefix to each key
-				new_params = {}
-				for key in model_params:
-					new_params[f'module.{key}'] = model_params[key]
-
-				# try to load params
-				try:
-					model.load_state_dict(new_params)
-				except:
-					Exception('Model parameters failed to load.')
-		
-	if optimizer:
-		optimizer.load_state_dict(params['optimizer'])
-
-	if model and optimizer:
-		return model, optimizer
-	elif model:
-		return model
-	if optimizer:
-		return optimizer
+			# create a new state dict with matching keys to destination object
+			module_state_dict = {}
+			dest_module_state_dict = getattr(dest_object, module).state_dict()
+			for key in dest_module_state_dict:
+				resolved_key = f'{module}.{key}'
+				if resolved_key not in resolved_params:
+					for key_r, tensor_r in resolved_params.items():
+						if key_r.endswith(f'{module}.{key}') and \
+							tensor_r.shape == dest_module_state_dict[key].shape:
+							print('found key')
+							resolved_key = key_r
+							break
+				module_state_dict[key] = resolved_params[resolved_key]
+			getattr(dest_object, module).load_state_dict(module_state_dict)
+	
+	return dest_object

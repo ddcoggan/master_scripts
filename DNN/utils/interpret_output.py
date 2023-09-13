@@ -1,7 +1,7 @@
 import pandas as pd
 import os.path as op
 
-def response(output, dataset, type='label', afc=None):
+def interpret_output(output, dataset, label_type='label', afc=None):
 
     """returns classification guess (based on directory label) for all classes or within alternate forced choice"""
     if dataset == 'ILSVRC2012':
@@ -12,5 +12,5 @@ def response(output, dataset, type='label', afc=None):
     if afc:
         class_idx = [afc[idx] for idx in class_idx]
 
-    responses = [label_data[type][int(idx)] for idx in class_idx]
+    responses = [label_data[label_type][int(idx)] for idx in class_idx]
     return responses

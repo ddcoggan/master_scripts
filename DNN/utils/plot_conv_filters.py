@@ -1,4 +1,5 @@
 import os
+import os.path as op
 import glob
 import sys
 import datetime
@@ -12,31 +13,47 @@ import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 
 
-def plot_conv_filters(modelName=None,modelDir=None,epoch=32,nClasses=16):
+def plot_conv_filters(layer, params_path, outpath):
 
-    weightsPath = f'{modelDir}/params/{epoch:03}.pt'
-    weights = torch.load(weightsPath)['model']
-    outDir = f'{modelDir}/filters_epoch{epoch}'
-    os.makedirs(outDir, exist_ok=True)
-    if modelName == 'alexnet':
-        layer = 'module.features.0.weight'
-    filters = weights[layer]
-    nFilters,nChannels,x,y = filters.shape
-    gridSize = math.ceil(np.sqrt(nFilters))
-    montageSize = (x*gridSize, y*gridSize)
-    montage = Image.new(size=montageSize, mode='RGB')
-    for i in range(nFilters):
-        imageArray = np.array(torch.Tensor.cpu(filters[i,:,:,:].permute(1, 2, 0)))
-        imagePos = imageArray - imageArray.min() # rescale to between 0,255 for PIL
-        imageScaled = imagePos * (255.0 / imagePos.max())
-        image = Image.fromarray(imageScaled.astype(np.uint8))
-        offset_x = (i % gridSize) * x
-        offset_y = int(i / gridSize) * y
+    params = torch.load(params_path)['model']
+    os.makedirs(op.dirname(outpath), exist_ok=True)
+
+    if type(layer) == int:
+        layer_key = list(params.keys())[layer]
+    else:
+        layer_key = layer
+
+    # in case of wrapped model, find the right key
+    variations = [f'module.{layer_key}', layer_key[7:]]
+    var_counter = 0
+    while not layer_key in params:
+        layer_key = variations[var_counter]
+        var_counter += 1
+
+    filters = params[layer_key].cpu()
+            
+    num_filters,num_channels,x,y = filters.shape
+    grid_size = math.ceil(np.sqrt(num_filters))
+    montage_size = (x*grid_size, y*grid_size)
+    montage = Image.new(size=montage_size, mode='RGB')
+
+    for i in range(num_filters):
+        image_array = np.array(filters[i,:,:,:].permute(1, 2, 0))
+        image_pos = image_array - image_array.min() # rescale to between 0,255 for PIL
+        image_scaled = image_pos * (255.0 / image_pos.max())
+        image = Image.fromarray(image_scaled.astype(np.uint8))
+        offset_x = (i % grid_size) * x
+        offset_y = int(i / grid_size) * y
         montage.paste(image, (offset_x, offset_y))
-    montage.save(f'{outDir}/{layer}.png')
-    print(imageArray[0:3,0,0])
+    montage.save(outpath)
 
 if __name__ == "__main__":
-    for occluder in ['barHorz02','barHorz04','barHorz08','barHorz16','barVert02','barVert04','barVert08','barVert16']:
-        modelDir = f'DNN/data/alexnet/imagenet16/fromPretrained/{occluder}/mixedLevels'
-        plotFilters('alexnet', modelDir, epoch=32, nClasses=16)
+	params_path = (f'/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models'
+                 f'/cognet/v1/params/000.pt')
+	plot_conv_filters('module.V1.simple.weight', params_path,
+                      f'{op.dirname(op.dirname(params_path))}/'
+                      f'kernel_plots/{op.basename(params_path)[:-3]}.png')
+        
+        
+        
+        

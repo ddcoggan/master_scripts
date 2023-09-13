@@ -11,25 +11,25 @@ sudo apt upgrade
 
 4. install gcc and cuda (see instructions at https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
 
-# these are the instructions as of 22-10-05
+# these are the instructions as of 23-06-01
 sudo apt install build-essential
 sudo apt-get install linux-headers-$(uname -r)
 sudo apt-key del 7fa2af80
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin
 sudo mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
-wget https://developer.download.nvidia.com/compute/cuda/11.7.1/local_installers/cuda-repo-ubuntu2204-11-7-local_11.7.1-515.65.01-1_amd64.deb
-sudo dpkg -i cuda-repo-ubuntu2204-11-7-local_11.7.1-515.65.01-1_amd64.deb
-sudo cp /var/cuda-repo-ubuntu2204-11-7-local/cuda-*-keyring.gpg /usr/share/keyrings/
+wget https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda-repo-ubuntu2204-12-1-local_12.1.1-530.30.02-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu2204-12-1-local_12.1.1-530.30.02-1_amd64.deb
+sudo cp /var/cuda-repo-ubuntu2204-12-1-local/cuda-*-keyring.gpg /usr/share/keyrings/
 sudo apt-get update
 sudo apt-get -y install cuda
 reboot
 
 5. install anaconda
 download from https://www.anaconda.com/products/distribution
-bash ~/Downloads/Anaconda3-2022.05-Linux-x86_64.sh
+bash ~/Downloads/Anaconda3-2023.03-1-Linux-x86_64.sh
 
 6. install DL tools in pycharm terminal 
-conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
 
 
 7. add necessary datasets under ~/Datasets/

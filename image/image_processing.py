@@ -172,7 +172,7 @@ def _plotfftinfo(imsize):
 ### Function definitions
 
 
-def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, colgap=None, colgapfreq=None, rowgap=None, rowgapfreq=None, bgcol=(255,255,255)):
+def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base_gap=0, colgap=None, colgapfreq=None, rowgap=None, rowgapfreq=None, bgcol=(255,255,255)):
     
     # TODO: place smaller images in center of window rather than top-left
     
@@ -192,9 +192,10 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, colg
         images.append(im)
 
     # specify spatial arrangement of images
-    image_locations = np.array(np.arange(len(images))).reshape((num_rows, num_cols))
-    if by_col:
-        image_locations = image_locations.transpose()
+    order = 'F' if by_col else 'C'
+    image_locations = np.array(np.arange(len(images))).reshape(
+        (num_rows, num_cols), order=order)
+
 
     # width of each column is as wide as the widest image
     col_coords = []
@@ -211,6 +212,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, colg
         col_coords.append(cumulative_width)
 
         # add column gap
+        cumulative_width += base_gap
         if colgap and (col+1) % colgapfreq == 0 and col < (num_cols-1):
             cumulative_width += colgap
 
@@ -231,6 +233,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, colg
         row_coords.append(cumulative_height)
 
         # add row gap
+        cumulative_height += base_gap
         if rowgap and (row+1) % rowgapfreq == 0 and row < (num_rows - 1):
             cumulative_height += rowgap
 

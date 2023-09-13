@@ -19,7 +19,7 @@ def config_to_text(CFG):
     for param_type, param_space in zip(['model', 'dataset', 'training'], [CFG.M, CFG.D, CFG.T]):
         config_txt += f'### {param_type} ###\n'
         for param_name, param in param_space.__dict__.items():
-            if not param_name.startswith('_'):
+            if not param_name.startswith('_') and param_name not in ['model']:
                 if type(param) is SimpleNamespace:
                     param_type_printed = False
                     for subparam_name, subparam in param.__dict__.items():

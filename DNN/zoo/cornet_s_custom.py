@@ -89,16 +89,16 @@ class CORblock_S_custom(nn.Module):
 
 class CORnetCustomHead(nn.Module):
 
-    def __init__(self, F, out_channels, head_depth):
+    def __init__(self, F, out_channels, head_depth, head_width):
         super().__init__()
         
         self.F = F
         self.out_channels = out_channels
         self.head_depth = head_depth
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.avgpool = nn.AdaptiveAvgPool2d(head_width)
         self.flatten = nn.Flatten()
 
-        head_sizes = [int(x) for x in (np.linspace(F, 1000, head_depth+1))]
+        head_sizes = [int(x) for x in (np.linspace(F*(head_width**2), 1000, head_depth+1))]
 
         for out_channel in range(out_channels):
             for layer in range(head_depth):
@@ -138,7 +138,7 @@ class CORnetCustomHead(nn.Module):
 def CORnet_S_custom(M):
     
     # fill in any missing parameters with defaults
-    defaults = {'R': (1,2,4,2), 'K': (3,3,3,3), 'F': (64,128,256,512), 'S': 4, 'out_channels': 1, 'head_depth': 1}
+    defaults = {'R': (1,2,4,2), 'K': (3,3,3,3), 'F': (64,128,256,512), 'S': 4, 'out_channels': 1, 'head_depth': 1, 'head_width': 1}
     for param, value in defaults.items():
         if not hasattr(M, param):
             setattr(M, param, value)
@@ -152,7 +152,7 @@ def CORnet_S_custom(M):
                                         ('V2', CORblock_S_custom(M.F[0], M.F[1], R=M.R[1], K=M.K[1], scale=M.S)),
                                         ('V4', CORblock_S_custom(M.F[1], M.F[2], R=M.R[2], K=M.K[2], scale=M.S)),
                                         ('IT', CORblock_S_custom(M.F[2], M.F[3], R=M.R[3], K=M.K[3], scale=M.S)),
-                                        ('decoder', CORnetCustomHead(M.F[3], M.out_channels, M.head_depth))]))
+                                        ('decoder', CORnetCustomHead(M.F[3], M.out_channels, M.head_depth, M.head_width))]))
 
     # weight initialization
     for mod in model.modules():
@@ -162,6 +162,7 @@ def CORnet_S_custom(M):
         elif isinstance(mod, nn.Linear):
             n = mod.in_features * mod.out_features
             mod.weight.data.normal_(0, math.sqrt(2. / n))
+            mod.bias.data.zero_()
         elif isinstance(mod, nn.BatchNorm2d):
             mod.weight.data.fill_(1)
             mod.bias.data.zero_()

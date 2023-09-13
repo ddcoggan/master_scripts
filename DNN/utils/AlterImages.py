@@ -2,40 +2,93 @@ import numpy as np
 import os
 import glob
 from PIL import Image
-import random
 import torch
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import math
+import itertools
 from types import SimpleNamespace
 import torchvision.transforms.functional as F
+from tensordict.tensordict import TensorDict
+
 
 class AlterImages:
 
-    def __init__(self, D=None, T=None):
+    def __init__(self, D=None):
         self.D = D
-        self.T = T
 
-    def __call__(self, pic):
-        if hasattr(self.D, 'Blur'):
-            pic = blur_image(pic, self.D)
-        if hasattr(self.D, 'Noise'):
-            pic = add_noise(pic, self.D)
-        if hasattr(self.D, 'Occlusion'):
-            pic = occlude_image(pic, self.D, self.T)
-        if hasattr(self.D, 'greyscale') and self.D.greyscale:
-            pic = greyscale_image(pic)
-        return pic
+        self.multiview = hasattr(D, 'num_views') and D.num_views > 1
+
+        self.alter = False
+        alterations = ['Occlusion', 'Blur', 'Noise', 'greyscale']
+        for a in alterations:
+            if hasattr(D, a):
+                self.alter = True
+
+
+    def __call__(self, inputs):
+
+        if not self.multiview and not self.alter:
+            return inputs
+        else:
+
+            # if single image (3-D tensor) pad 4th dimension
+            if len(inputs.shape) == 3:
+                inputs = inputs[None, :]
+
+            # first dimension then always represents number of images
+            num_images = inputs.shape[0]
+
+            # split into views
+            if self.multiview:
+                num_views = self.D.num_views
+                views = torch.tile(inputs, dims=(1, num_views, 1, 1, 1))
+            else:
+                num_views = 1
+                views = torch.tile(inputs, dims=(num_views, 1, 1, 1))
+                views = views[None, :] # pad image dimension
+
+
+            # apply transforms
+
+            # if contrastive learning using standard contrastive transform
+            if self.multiview and not self.alter:
+                transform = transforms.Compose([
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomApply([transforms.ColorJitter(
+                        brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)],
+                                           p=0.8),
+                    transforms.RandomGrayscale(p=0.2),
+                    transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+                ])
+                contrastive_views = torch.empty(views.shape[:-2] + (224, 224))
+                for i, v in itertools.product(np.arange(num_images), np.arange(
+                        num_views)):
+                    contrastive_views[i, v, :] = transform(views[i, v, :])
+                views = contrastive_views.squeeze()
+
+            # if using custom transforms
+            if hasattr(self.D, 'Blur'):
+                views = blur_image(views, self.D)
+            if hasattr(self.D, 'Noise'):
+                views = add_noise(views, self.D)
+            if hasattr(self.D, 'Occlusion'):
+                views = occlude_image(views, self.D)
+            if hasattr(self.D, 'greyscale') and self.D.greyscale:
+                views = greyscale_image(views)
+
+            return views
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"
     
-def occlude_image(inputs, D, T=None):
+def occlude_image(inputs, D):
 
     """Adds occluders to image.
 
         Arguments:
-            image (tensor):
+            inputs (tensor):
             o = occlusion params (Namespace): type (string or list): type of occlusion to apply.
                                       visibility (float, range 0:1): proportion of image to remain visible
                                       colour (tuple of length 3 or list thereof, range 0:255): RGB colour for occluded pixels
@@ -44,185 +97,172 @@ def occlude_image(inputs, D, T=None):
         Returns:
             occluded image (tensor)"""
 
-    o = D.Occlusion
-    occluder_dir = f'{os.path.expanduser("~")}/Datasets/occluders'
 
-    # output under contrastive learning is twice the size
-    if 'contrastive' in T.learning:
-        outputs = torch.empty_like(torch.tile(inputs, dims=(2,1,1,1)))
-    else:
-        outputs = torch.empty_like(inputs)
+    O = D.Occlusion
+    occluder_dir = os.path.expanduser('~/Datasets/occluders')
 
-    # pad 4th dimension to allow image loop over a single image
-    if len(inputs.shape) == 3:
-        inputs = inputs[None, :]
+    num_images, num_views, C, H, W = inputs.shape
+    outputs = torch.empty(num_images, num_views, C, 224, 224)
 
-    num_images = inputs.shape[0]
+    """
+    # preload all occluder tensors
+    all_occluders = TensorDict({}, batch_size=[1])
+    if not isinstance(O.type, list):
+        O.type = [O.type]
+    if not isinstance(O.visibility, list):
+        O.visibility = [O.visibility]
+    for ot in O.type:
+        all_occluders[ot] = TensorDict({}, batch_size=[1])
+        for ov in O.visibility:
+            if ov is None:
+                occluders_path = f'{occluder_dir}/{ot}/{round(ov * 100)}/occluders.pt'
+                all_occluders[ot] = torch.load(occluders_path)
+            elif ov < 1:
+                occluders_path = f'{occluder_dir}/{ot}/{round(ov * 100)}/occluders.pt'
+                all_occluders[ot][1-ov] = torch.load(occluders_path)
+    """
 
+
+    # transform for occluder only
+    occluder_transform = transforms.Compose([
+        transforms.RandomRotation(10, interpolation=transforms.InterpolationMode.BILINEAR),
+        transforms.RandomAffine(degrees=0, translate=(0.1,0.1), scale=(1.25, 1.25)), # scale to remove edge artifacts
+        ])
+
+    # transform for view prior to occlusion
+    view_transform = transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        ])
+
+    # transform for occluded image
+    final_transform = transforms.Compose([
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+        ])
+
+    # loop through images, views, applying occlusion
     for i in range(num_images):
 
-        image = torch.squeeze(inputs[i,:,:,:])
+        views = inputs[i]
 
-        H,W = image.shape[1:3]
 
-        # get visibility
-        if o.visibility is None: # in case occluder type has no specified visibilities
-            this_coverage = None
-            coverage_path = ''
-        else:
-            if type(o.visibility) == list:
-                this_coverage = 1 - random.choice(o.visibility)
-            else:
-                this_coverage = 1 - o.visibility
-            coverage_path = f'{round(this_coverage * 100)}/'
+        # prop_occluded is applied image-wise
+        occlude_views = torch.rand(1) < O.prop_occluded
 
-        # get fill colour
-        if type(o.colour) == list:
-            fill_col = torch.tensor(random.choice(o.colour))
-        elif type(o.colour) == tuple:
-            fill_col = torch.tensor(o.colour)
-        elif o.colour == 'random':
-            fill_col = torch.randint(255,(3,))
+        # ensure first occluded view has new occluder
+        occ_configured = False
 
-        # if no occlusion desired
-        if this_coverage == 0 or np.random.uniform() > o.prop_occluded:
+        for v in range(num_views):
 
-            if 'contrastive' in T.learning:
+            image = views[v]
+            if num_views > 1:
+                image = view_transform(image)
 
-                # first image is unaltered
-                outputs[i, :, :, :] = image
-
-                # second image is translated slightly to avoid identical image portions during val
-                image_PIL = transforms.ToPILImage()(image).convert('RGBA')
-                x_shift = np.random.randint(41) - 20
-                y_shift = np.random.randint(41) - 20
-                image_PIL = image_PIL.rotate(0, translate=(x_shift, y_shift)) # doesn't actually rotate, just translates
-                translated_image = torch.tensor(np.array(image_PIL.convert('RGB'))).permute(2, 0, 1) / 255
-                outputs[num_images + i, :, :, :] = translated_image
-
+            # determine whether to occlude this view
+            occlude_view = v in D.views_altered if hasattr(D, 'views_altered') else True
+            if not occlude_view or not occlude_views:
+                outputs[i, v] = image
             else:
 
-                outputs = image
+                # get occluder parameters
+                if not occ_configured or D.view_resample:  # use same occluder for all views unless resample
 
-
-        # if occlusion desired
-        else:
-
-            image_PIL = transforms.ToPILImage()(image).convert('RGBA')
-
-            occluders_PIL = []
-
-            # get occlusion image
-            if type(o.type) == list:
-                this_occ_type = random.choice(o.type)
-            else:
-                this_occ_type = o.type
-            if this_occ_type in ['naturalTextured', 'naturalTextured1', 'naturalTextured2']:
-                occluder_paths = glob.glob(f'{occluder_dir}/{this_occ_type}/*.png')
-            else:
-                occluder_paths = glob.glob(f'{occluder_dir}/{this_occ_type}/{coverage_path}*.png')
-            occluder_path = random.choice(occluder_paths)
-            occluder_PIL = Image.open(occluder_path).convert('RGBA')
-            rotation = np.random.randint(21) - 10 # randomly rotate between +- 10 degrees
-            occluders_PIL.append(occluder_PIL.rotate(rotation))
-
-            # if contrastive learning, get second occluder
-            if 'contrastive' in T.learning:
-
-                # if second occluder is a different random occluder
-                if D.contrast == 'random_occluder':
-                    if type(o.type) == list:
-                        this_occ_type = random.choice(o.type)
+                    # image visibility
+                    # note: directories are labelled by occluder coverage (1 - visibility)
+                    if O.visibility is None:  # in case occluder type has no specified visibilities
+                        this_coverage = None
+                        coverage_path = ''
                     else:
-                        this_occ_type = o.type
-                    if this_occ_type in ['naturalTextured', 'naturalTextured1', 'naturalTextured2']:
-                        occluder_paths = glob.glob(f'{occluder_dir}/{this_occ_type}/*.png')
+                        if type(O.visibility) == list:
+                            this_coverage = 1 - O.visibility[
+                                torch.randint(len(O.visibility), (1,))]  # if multiple, select one at random
+                        else:
+                            this_coverage = 1 - O.visibility
+                        coverage_path = f'{round(this_coverage * 100)}/'
+
+                    # occluder type
+                    if type(O.type) == list:
+                        this_occ_type = O.type[torch.randint(len(O.type), (1,))]  # if multiple, select one at random
                     else:
-                        occluder_paths = glob.glob(f'{occluder_dir}/{this_occ_type}/{coverage_path}*.png')
-                    occluder_path = random.choice(occluder_paths)
-                    occluder_PIL = Image.open(occluder_path).convert('RGBA')
-                    rotation = np.random.randint(21) - 10  # randomly rotate occluder +- 10 degrees
-                    occluders_PIL.append(occluder_PIL.rotate(rotation))
+                        this_occ_type = O.type
 
-                # if second image is translated version of same occluder
-                if D.contrast == 'occluder_translate':
-                    x_shift = np.random.randint(41) - 20
-                    y_shift = np.random.randint(41) - 20
-                    occluders_PIL.append(occluders_PIL[0].copy())
-                    occluders_PIL[1] = occluders_PIL[1].rotate(0, translate=(x_shift, y_shift))
+                    # occluder instance
+                    """
+                    occs = all_occluders[this_occ_type][this_coverage]
+                    occluder_image = occs[torch.randint(occs.shape[0], (1,))]
+                    """
+                    occluder_paths = glob.glob(f'{occluder_dir}/{this_occ_type}/{coverage_path}*.png')
+                    occluder_path = occluder_paths[torch.randint(len(occluder_paths), (1,))]
+                    occluder_image = transforms.PILToTensor()(Image.open(occluder_path).convert('RGBA').resize((224,224), resample=Image.BILINEAR))
 
-            for x, occluder_PIL in enumerate(occluders_PIL):
 
-                occluded_image_PIL = image_PIL.copy()
-
-                # if contrastive learning, translate second image prior to occlusion
-                if x == 1:
-                    x_shift = np.random.randint(41) - 20
-                    y_shift = np.random.randint(41) - 20
-                    occluded_image_PIL = occluded_image_PIL.rotate(0, translate=(x_shift, y_shift))
-
-                # ensure image and occluder are same size
-                if image_PIL.size != occluder_PIL.size:
-                    occluder_PIL = occluder_PIL.resize(image_PIL.size)
-
-                # if occluder is textured, paste occluder over image
-                if 'naturalTextured' in this_occ_type:
-                    occluded_image_PIL.paste(occluder_PIL, (0, 0), occluder_PIL)
-                    occluded_image = torch.tensor(np.array(occluded_image_PIL.convert('RGB')))
-                    if 'contrastive' in T.learning:
-                        outputs[x*num_images + i, :, :, :] = occluded_image.permute(2, 0, 1) / 255
+                    # occluder colour
+                    if 'naturalTextured' in this_occ_type:
+                        # keep original colour
+                        occluder_base = occluder_image / 255
                     else:
-                        outputs = occluded_image.permute(2,0,1)/255
+                        # use custom colour
+                        if type(O.colour) == list:
+                            fill_col = O.colour[torch.randint(len(O.colour), (1,))]  # if multiple, select one at random
+                        else:
+                            fill_col = O.colour
+                        if isinstance(fill_col, tuple):
+                            fill_col = torch.tensor(fill_col)
+                            if max(fill_col) > 1:
+                                fill_col = fill_col / 255
+                        elif fill_col == 'random':
+                            fill_col = torch.rand((3,))
 
-                # if occluder is untextured, set colour and paste over image
-                else:
-                    # empty final occluder image
-                    occluder_coloured = np.zeros((H, W, 4), dtype=np.uint8)
+                        fill_col = torch.concat([fill_col, torch.tensor((1,))]) # add alpha
+                        occluder_base = (occluder_image[3] / 255) * fill_col[:,None,None].expand((4,224,224))
 
-                    # fill first 3 channels with fill colour
-                    occ_colour_PIL = Image.new(color=tuple(fill_col),mode='RGB',size=(H,W))
-                    occluder_coloured[:, :, :3] = np.array(occ_colour_PIL)
+                    occ_configured = True
 
-                    # fill last channel with alpha layer of occluder
-                    occluderAlpha = torch.tensor(np.array(occluder_PIL))[:, :, 3]  # load image, put in tensor
-                    occluder_coloured[:,:,3] = occluderAlpha
+                # view-specific occluder transform
+                occluder = occluder_transform(occluder_base)
 
-                    # make image
-                    occluder_coloured_PIL = Image.fromarray(occluder_coloured, mode='RGBA')
+                # occluder mask is occluder alpha channel tiled across RGB channels
+                occluder_mask = torch.tile(occluder[3,:,:], dims=(3, 1, 1))
 
-                    # paste occluder over image
-                    occluded_image_PIL.paste(occluder_coloured_PIL, (0,0), occluder_coloured_PIL)
-                    occluded_image = torch.tensor(np.array(occluded_image_PIL.convert('RGB')))
+                # remove occluded pixels from image
+                image *= (1 - occluder_mask)
 
-                    if 'contrastive' in T.learning:
-                        outputs[x*num_images + i, :, :, :] = occluded_image.float().permute(2,0,1)/255
-                    else:
-                        outputs = occluded_image.float().permute(2,0,1)/255
+                # replace occluded pixels with fill colour (dropping alpha channel)
+                image += occluder[:3]
+
+                # perform final transform on occluded image
+                image = final_transform(image)
+
+                outputs[i,v] = image
+
+    outputs = outputs.squeeze() # remove leading dimensions if one output image
 
     return outputs
 
 
 
-def add_noise(image, d):
+def add_noise(image, D):
 
-    n = D.noise
-    noised_image = torch.zeros_like(image)
+    N = D.noise
+    noisy_image = torch.zeros_like(image)
 
     if type(n.ssnr) is list:
-        ssnr = random.choice(n.ssnr)
+        ssnr = random.choice(N.ssnr)
     else:
-        ssnr = n.ssnr
+        ssnr = N.ssnr
 
     if n.type == 'gaussian': # Gaussian noise
         sigma = (1 - ssnr) / 2 / 3
         signal = (image-0.5) * ssnr + 0.5
         noise = np.tile(np.random.normal(0, sigma, (1, image.size(2), image.size(3))), (image.size(1), 1, 1))
         noise = torch.from_numpy(noise).float().to(image.device)
-        noised_image = signal + noise
-        noised_image[noised_image > 1] = 1
-        noised_image[noised_image < 0] = 0
-        noised_image = normalize(noised_image)
-        noised_image[i] = noised_image
+        noisy_image = signal + noise
+        noisy_image[noisy_image > 1] = 1
+        noisy_image[noisy_image < 0] = 0
+        noisy_image = normalize(noisy_image)
+        noisy_image[i] = noisy_image
 
     elif n.type == 'fourier':
 
@@ -236,21 +276,21 @@ def add_noise(image, d):
         signal = (image - 0.5) * ssnr + 0.5
         noise = np.tile((image_recon - 0.5) * (1 - ssnr), (image.size(1), 1, 1))
         noise = torch.from_np(noise).float().to(image.device)
-        noised_image = signal + noise
-        noised_image[noised_image > 1] = 1
-        noised_image[noised_image < 0] = 0
-        noised_image = normalize(noised_image)
+        noisy_image = signal + noise
+        noisy_image[noisy_image > 1] = 1
+        noisy_image[noisy_image < 0] = 0
+        noisy_image = normalize(noisy_image)
 
-    noised_image = noised_image.repeat(1, 3, 1, 1) # RGB
-    return noised_image
+    noisy_image = noisy_image.repeat(1, 3, 1, 1) # RGB
+    return noisy_image
 
 
-def blur_image(image, d):
+def blur_image(image, D):
 
-    b = D.blur
-    weights = np.asarray(b.weights).astype('float64')
+    B = D.blur
+    weights = np.asarray(B.weights).astype('float64')
     weights = weights / np.sum(weights)
-    sigma = random.choice(b.sigmas, 1, p=weights)[0]
+    sigma = random.choice(B.sigmas, 1, p=weights)[0]
     kernel_size = 2 * math.ceil(2.0 * sigma) + 1
 
     if sigma == 0:
@@ -261,8 +301,5 @@ def blur_image(image, d):
     return blurred_image
 
 def greyscale_image(inputs):
-    if len(inputs.shape) == 3:
-        greyscale_image = torch.tile(torch.mean(inputs, axis=0,keepdim=True), dims=(3,1,1))
-    elif len(inputs.shape) == 4:
-        greyscale_image = torch.tile(torch.mean(inputs, axis=1,keepdim=True), dims=(1,3,1,1))
-    return greyscale_image
+    grey_image = transforms.Grayscale()(inputs)
+    return grey_image

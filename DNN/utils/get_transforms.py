@@ -1,92 +1,87 @@
+import torch.nn
 import torchvision.transforms as transforms
 import sys
 import os
 import shutil
+from types import SimpleNamespace
+from utils import Occlude
 
-sys.path.append(f'{os.path.expanduser("~")}/david/masterScripts/DNN')
-from utils import AlterImages, multitransforms
 
-def get_transforms(D, T):
+class MultipleViews:
 
-    # standard transforms
-    
-    if not hasattr(D, 'transform') or D.transform == 'standard':
-    
-        # train
-        train_sequence = [
-            transforms.RandomResizedCrop((224,224), antialias=True),
+    def __init__(self, transforms):
+
+        self.transforms = transforms
+        self.num_views = len(self.transforms)
+        
+    def __call__(self, input):
+
+        return [self.transforms[v](input) for v in range(self.num_views)]
+
+
+def get_transforms(D=SimpleNamespace()):
+
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    # default transforms
+    transforms_train = [
+        transforms.ToTensor(),
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        normalize,
+    ]
+    transforms_val =[
+        transforms.ToTensor(),
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
+        normalize,
+    ]
+
+    # contrastive learning transform
+    if hasattr(D, 'transform_type') and D.transform_type == 'contrastive':
+        transforms_train = [
+            transforms.ToTensor(),
+            transforms.RandomResizedCrop(224, scale=(0.8,1.0)),
             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.RandomApply([transforms.ColorJitter(
+                brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)],
+                p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+            normalize,
         ]
+        transforms_val = transforms_train.copy()
 
-        # val
-        val_sequence = [
-            transforms.Resize(256, antialias=True),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
+    # add occlusion
+    if hasattr(D, 'Occlusion'):
+        transforms_train.insert(3, Occlude(D))
+        transforms_val.insert(3, Occlude(D))
 
-    elif D.transform == 'alter':
+    # compose transforms
+    transform_train = transforms.Compose(transforms_train)
+    transform_val = transforms.Compose(transforms_val)
 
-        # transforms allowing for AlterImages functions
+    # create multiple views
+    if D.num_views > 1:
 
-        # train
-        train_sequence = [
-            transforms.ToTensor(),
-            transforms.Resize(256, antialias=True),  # resize (smallest edge becomes this length)
-            transforms.RandomCrop(256),  # make square
-            AlterImages(D, T),
-            transforms.RandomHorizontalFlip(),
-            #transforms.RandomRotation(10),
-            transforms.RandomCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
+        # for views with different transforms, create list of transforms
+        transforms_train = [transforms_train.copy() for _ in range(D.num_views)]
+        transforms_val = [transforms_val.copy() for _ in range(D.num_views)]
+        for view in range(D.num_views):
+            if hasattr(D, 'views_occluded') and view not in D.views_occluded:
+                transforms_train[view].pop(3)
+                transforms_val[view].pop(3)
 
-        # val
-        val_sequence = [
-            transforms.ToTensor(),
-            transforms.Resize(256, antialias=True),  # resize (smallest edge becomes this length)
-            transforms.CenterCrop(256),  # make square
-            AlterImages(D, T),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
+        # compose transforms
+        transform_train = [transforms.Compose(t) for t in transforms_train]
+        transform_val = [transforms.Compose(t) for t in transforms_val]
 
-
-    # for contrastive learning only compose up to the AlterImage stage, as the data loaders cannot handle
-    # the splitting of one input to more than one output image during the transforms.
-    if hasattr(T, 'learning') and 'contrastive' in T.learning:
-
-        transform_train = transforms.Compose(train_sequence[:3])
-        transform_val = transforms.Compose(val_sequence[:3])
-
-    else:
-
-        transform_train = transforms.Compose(train_sequence)
-        transform_val = transforms.Compose(val_sequence)
+        # get views
+        transform_train = MultipleViews(transform_train)
+        transform_val = MultipleViews(transform_val)
 
     return transform_train, transform_val
 
 
-def get_remaining_transform(train_eval):
 
-    # train
-    train_sequence = [transforms.RandomHorizontalFlip(),
-                      #transforms.RandomRotation(10),
-                      transforms.RandomCrop(224),
-                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
-
-    # val
-    val_sequence = [transforms.CenterCrop(224),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
-
-    if train_eval == 'train':
-        remaining_sequence = train_sequence
-    else:
-        remaining_sequence = val_sequence
-    remaining_transform = transforms.Compose(remaining_sequence)
-
-    return remaining_transform
 

@@ -1,5 +1,8 @@
 """
-Requires docker, as installing neuropythy natively causes dependency conflicts with other scripts
+Requires docker, as installing neuropythy natively causes dependency
+conflicts with other scripts.
+For new subjects, ensure docker has permissions to write to their freesurfer
+subjects directory (surest way is to allow all users all permissions)
 """
 import os
 import os.path as op
@@ -31,9 +34,9 @@ def get_wang_atlas(subject):
         
         # Convert to labels for all regions
         vol_file = f"{fs_dir}/{subject}/surf/{hemi}.wang15_mplbl.mgz"
-        outpath = f"{fs_dir}/{subject}/surf/{hemi}.wang15_mplbl.label"
-        os.system(f"mri_cor2label --i {vol_file} --stat --l {outpath} --surf {subject} {hemi} inflated")
-
+        outpath = f"{fs_dir}/{subject}/label/{hemi}.wang15_mplbl.label"
+        if not op.isfile(outpath):
+            os.system(f"mri_cor2label --i {vol_file} --stat --l {outpath} --surf {subject} {hemi} inflated")
 
         roiname_array = ("V1v", "V1d", "V2v", "V2d", "V3v", "V3d", "hV4", "VO1", "VO2", "PHC1", "PHC2", \
                          "TO2", "TO1", "LO2", "LO1", "V3B", "V3A", "IPS0", "IPS1", "IPS2", "IPS3", "IPS4", \
@@ -41,9 +44,9 @@ def get_wang_atlas(subject):
         for r, roiname in enumerate(roiname_array):
 
             # Convert to label
-            label = f"{fs_dir}/{subject}/surf/{hemi}.wang15_mplbl.{roiname}.label"
+            label = f"{fs_dir}/{subject}/label/{hemi}.wang15_mplbl.{roiname}.label"
             if not op.isfile(label):
-                os.system(f"mri_cor2label --i {vol_file} --id {r + 1} --l {outpath} --surf {subject} {hemi} inflated")
+                os.system(f"mri_cor2label --i {vol_file} --id {r + 1} --l {label} --surf {subject} {hemi} inflated")
 
             """
             # convert to nifti in anatomical space

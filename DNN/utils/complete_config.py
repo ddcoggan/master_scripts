@@ -1,3 +1,9 @@
+"""
+This script determines basic training parameters prior to calling the training script.
+Specifically, it calculates the maximum batch size and reasonable learning rate, and
+resolves conflicts when a training regime is resumed with new settings
+"""
+
 import os
 import os.path as op
 import glob
@@ -6,7 +12,9 @@ import datetime
 import numpy as np
 import pickle as pkl
 import shutil
-sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
+from types import SimpleNamespace
+import pandas as pd
+
 # as an alternative to controlling GPU utilization with pytorch, set pytorch to use any available GPUs and
 # use these lines to control which GPUs are visible to pytorch (run before importing pytorch)
 # This is most useful if calling many different objects that each need to know the GPU configuration,
@@ -17,11 +25,17 @@ sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
 # resolve = 'resume' to continue training with no changes to the configuration
 # resolve = 'new' to merge newly specified and original configs, with conflicts resolved in favour of new
 # resolve = 'orig' to merge newly specified and original configs, with conflicts resolved in favour of orig
+# unless resolve == 'resume', ['checkpoint', 'num_epochs', 'batch_size'] are ALWAYS overwritten by values in new config
 
 def complete_config(CFG, model_dir=None, resolve='new'):
 
     if model_dir is None:
-        model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/data/{CFG.M.model_name}/{CFG.M.identifier}')
+        model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/models/{CFG.M.model_name}/{CFG.M.identifier}')
+
+    # sub model dir if transfer learning
+    if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
+        model_dir = f'{model_dir}/{CFG.M.transfer_dir}'
+
     CFG.M.model_dir = model_dir
 
     # look for previous configs
@@ -32,19 +46,28 @@ def complete_config(CFG, model_dir=None, resolve='new'):
 
     # unless starting new training regime or resuming with no changes, merge configs
     if not orig_config_exists:
-        print(f'Starting training of new model at {model_dir}')
+        if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
+            if not hasattr(CFG.M, 'starting_params'):
+                CFG.M.starting_params = sorted(glob.glob(f'{op.dirname(model_dir)}/params/*.pt'))[-1]
+            print(f'Transfer learning regime initiated using params at {CFG.M.starting_params}')
+        else:
+            print(f'Starting training of new model at {model_dir}')
+
     elif resolve == 'resume':
         print(f'Resuming training of model at {model_dir} with no config changes')
         assert orig_config_exists
         CFG = CFG_orig
     else:
-        print(f'Resuming training of model at {model_dir} with potential config changes')
+        print(f'Resuming training of model at {model_dir} with potential config changes.\n'
+              f'Conflicts between original and new configs resolved in favour of {resolve}.')
 
         # force overwrite for certain parameters
-        forced_params = ['last_epoch', 'num_epochs', 'batch_size']
-        if CFG.T.force_lr:
-            forced_params.append('learning_rate')
+        forced_params = ['checkpoint', 'num_epochs', 'batch_size', 'num_workers']
+        if hasattr(CFG.T, 'overwrite_optimizer') and CFG.T.overwrite_optimizer:
+            forced_params += ['learning_rate','step_size','momentum','weight_decay','patience']
+        print(f'The following parameters will be forced if they exist in the new config: {forced_params}')
 
+        # resolve conflict for other params (original params are written into the new config)
         for params in ['M','D','T']:
             params_orig = getattr(CFG_orig, params)
             params_new = getattr(CFG, params)
@@ -55,107 +78,114 @@ def complete_config(CFG, model_dir=None, resolve='new'):
                     if hasattr(params_orig, param) and not hasattr(params_new, param):
                         print(f'Parameter ({param}) found only in orig config, using in final config')
                         item = getattr(params_orig, param)
+                        setattr(params_new, param, item)
 
                     elif not hasattr(params_orig, param) and hasattr(params_new, param):
                         print(f'Parameter ({param}) found only in new config, using in final config')
-                        item = getattr(params_new, param)
 
                     elif hasattr(params_orig, param) and hasattr(params_new, param):
                         orig_item = getattr(params_orig, param)
                         new_item = getattr(params_new, param)
                         if orig_item == new_item:
                             print(f'No conflict for parameter ({param})')
-                            item = orig_item
+                        elif resolve == 'orig':
+                            print(f'Conflict for parameter ({param}), using orig')
+                            setattr(params_new, param, orig_item)
                         else:
-                            if resolve == 'orig':
-                                print(f'Conflict for parameter ({param}), using orig')
-                                item = orig_item
-                            else:
-                                print(f'Conflict for parameter ({param}), using new')
-                                item = new_item
-                    setattr(params_new, param, item)
+                            print(f'Conflict for parameter ({param}), using new')
 
+
+    # unpack resolved config
+    M, D, T = CFG.M, CFG.D, CFG.T
+
+    # add any missing default parameters
+    defaults = SimpleNamespace(
+        D = SimpleNamespace(
+            dataset='ILSVRC2012',
+            num_views = 1,
+            transform_type = 'default'
+        ),
+        T = SimpleNamespace(
+            num_epochs = 100,
+            classification=True,
+            contrastive = False,
+            supervised_contrastive = False,
+            optimizer_name = 'SGD',
+            momentum = 0.9,
+            weight_decay = 1e-4,
+            scheduler = 'StepLR',
+            step_size = 30,
+            SWA = False,
+            cutmix = False
+        ),
+    )
+    for default_params, params in zip([defaults.D, defaults.T], [D,T]):
+        for param in default_params.__dict__.keys():
+            if not hasattr(params, param):
+                setattr(params, param, getattr(default_params, param))
 
     # calculate last epoch if not set or resuming training with no changes
-    if not hasattr(CFG.T, 'last_epoch') or resolve == 'resume':
-        params_paths = sorted(glob.glob(f"{CFG.M.model_dir}/params/*.pt"))
+    if not hasattr(T, 'checkpoint') or T.checkpoint in [None, -1] or resolve == 'resume':
+        params_paths = sorted(glob.glob(f"{M.model_dir}/params/???.pt"))
         if params_paths:
-            CFG.T.last_epoch = int(os.path.basename(params_paths[-1])[:-3])
-        elif CFG.T.freeze_weights: # special case for transfer learning
-            print('Copying weights over for transfer learning')
-            params_dir_new = f'{CFG.M.model_dir}/params'
-            os.makedirs(params_dir_new)
-            shutil.copy(params_path, f'{params_dir_new}/000.pt')
-            CFG.T.last_epoch = 0
+            print(f'Most recent params found at {params_paths[-1]}')
+            T.checkpoint = int(os.path.basename(params_paths[-1])[:-3])
         else:
-            CFG.T.last_epoch = None
+            T.checkpoint = -1
+
+
 
     # determine whether model has finished training
-    epoch_stats_path = f'{model_dir}/epoch_stats.pkl'
+    epoch_stats_path = f'{model_dir}/epoch_stats.csv'
     if op.isfile(epoch_stats_path):
-        epoch_stats = pkl.load(open(epoch_stats_path, 'rb'))
-        key = [key for key in epoch_stats['eval'] if key.startswith('loss')][0]
-        do_training = 0 not in epoch_stats['eval'][key] or CFG.T.last_epoch is None or CFG.T.num_epochs < CFG.T.last_epoch
+        epoch_stats = pd.read_csv(open(epoch_stats_path, 'r+'))
+        do_training = len(epoch_stats) < (T.num_epochs+1)*2
     else:
         do_training = True
 
     if do_training:
 
-        sys.path.append(op.expanduser('~/david/masterScripts/DNN'))
+        sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
 
         # remove warnings for predified networks
-        if CFG.M.model_name.endswith('predify'):
+        if M.model_name.endswith('predify'):
             import warnings
             warnings.simplefilter("ignore")
 
         # configure hardware
         from utils import configure_hardware
-        CFG.T, CFG.T.device = configure_hardware(CFG.T)
+        T, T.device = configure_hardware(T)
 
-        # load model
-        if not hasattr(CFG.M, 'model'):
+        # only load model if necessary for determining params
+        load_model = not hasattr(T, 'batch_size') or not hasattr(T, 'learning_rate')
+        if load_model:
+
+            # load model
             from utils import get_model
-            CFG.M.model = get_model(CFG.M)
+            model = get_model(M)
 
-        # adapt output size of model based on number of classes in dataset
-        num_classes = len(glob.glob(f'{op.expanduser("~")}/Datasets/{CFG.D.dataset}/train/*'))
-        if num_classes != 1000 and CFG.T.learning == 'supervised_classification':
-            from utils import change_output_size
-            CFG.M.model = change_output_size(CFG.M.model, CFG.M, num_classes)
+            # adapt output size of model based on number of classes in dataset
+            num_classes = len(glob.glob(f'{op.expanduser("~")}/Datasets/{D.dataset}/train/*'))
+            if num_classes != 1000 and T.classification:
+                from utils import change_output_size
+                model = change_output_size(model, M, num_classes)
 
         # calculate optimal batch size
-        if not hasattr(CFG.T, 'batch_size'):
+        if not hasattr(T, 'batch_size'):
             from utils import calculate_batch_size
-            t = calculate_batch_size(CFG.M.model, CFG.T, CFG.T.device)
-            print(f'optimal batch size calculated at {t.batch_size}')
+            T = calculate_batch_size(model, T, T.device)
+            print(f'optimal batch size calculated at {T.batch_size}')
 
         # calculate optimal learning rate
-        if not hasattr(CFG.T, 'learning_rate'):
-            CFG.T.learning_rate = 2**-7 * np.sqrt(CFG.T.batch_size/2**5) # non-linear
-            #CFG.T.learning_rate * CFG.T.batch_size / 2 ** 5  # linear
-            print(f'initial learning rate calculated at {CFG.T.learning_rate}')
+        if not hasattr(T, 'learning_rate'):
+            T.learning_rate = 2**-7 * np.sqrt(T.batch_size/2**5) # non-linear
+            #T.learning_rate * T.batch_size / 2 ** 5  # linear
+            print(f'initial learning rate calculated at {T.learning_rate}')
 
-        # save viewable text version of final configuration (appends to file in cases where training stopped and resumed)
-        os.makedirs(CFG.M.model_dir, exist_ok=True)
-        config_txt = f'{datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}\n\n'
-        for param_type, param_space in zip(['model', 'dataset', 'training'], [CFG.M, CFG.D, CFG.T]):
-            config_txt += f'### {param_type} ###\n'
-            for param_name, param in param_space.__dict__.items():
-                if not param_name.startswith('_') and param_name != 'model':
-                    if type(param) is type:
-                        param_type_printed = False
-                        for subparam_name, subparam in param.__dict__.items():
-                            if not subparam_name.startswith('_'):
-                                if not param_type_printed:
-                                    config_txt += f'{param_name.ljust(16)}{subparam_name.ljust(16)}{subparam}\n'
-                                else:
-                                    config_txt += f'{subparam_name.ljust(16).rjust(32)}{subparam}\n'  # if param is another class
-                    else:
-                        config_txt += f'{param_name.ljust(16)}{param}\n'  # if param is a parameter
-            config_txt += '\n\n'
-        config_txt += '\n\n\n\n'
-        config_path_txt = op.join(CFG.M.model_dir, 'config.txt')
-        with open(config_path_txt, 'a') as c:
-            c.write(config_txt)
+    # repack config
+    CFG = SimpleNamespace(M=M, D=D, T=T)
 
-    return CFG
+    if do_training and load_model:
+        return CFG, model  # stops model being reloaded
+    else:
+        return CFG

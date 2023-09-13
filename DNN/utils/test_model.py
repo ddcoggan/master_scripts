@@ -18,20 +18,27 @@ torch.backends.cudnn.benchmark = False
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from argparse import Namespace
+from types import SimpleNamespace
 import math
 import pprint
 import torch.nn.functional as F
 import shutil
+import pickle as pkl
 
-sys.path.append(f'{os.path.expanduser("~")}/david/masterScripts/DNN')
+
+sys.path.append(os.path.expanduser('~/david/master_scripts/DNN'))
 from utils import accuracy
 
 
 def test_model(CFG):  # model params, dataset params, training params
 
+    torch.no_grad()
+
     # unpack config
     M, D, T = CFG.M, CFG.D, CFG.T
+
+    # get model architecture from model dir
+    CFG_orig = pkl.load(open(f'{M.model_dir}/config.pkl', 'rb'))
 
     ### CALCULATE CONFIGURATION PARAMETERS ###
 
@@ -42,7 +49,7 @@ def test_model(CFG):  # model params, dataset params, training params
     # load model
     if not hasattr(M, 'model'):
         from utils import get_model
-        model = get_model(M)
+        model = get_model(CFG_orig.M)
     else:
         model = M.model
     model.eval()
@@ -56,7 +63,7 @@ def test_model(CFG):  # model params, dataset params, training params
     ### image processing ###
 
     from utils import get_transforms
-    _, transform = get_transforms(D, T)
+    _, transform = get_transforms(D)
     val_path = op.expanduser(f'~/Datasets/{D.dataset}/val')
     val_data = ImageFolder(val_path, transform=transform)
     if hasattr(D, 'class_subset'):
@@ -91,7 +98,7 @@ def test_model(CFG):  # model params, dataset params, training params
     #print(model)
 
     # load model parameters
-    if not hasattr(M, 'params_loaded') or M.params_loaded is False:
+    if not hasattr(CFG.M, 'params_loaded') or CFG.M.params_loaded is False:
         print('loading parameters...')
         from utils import load_params
         model = load_params(M.params_path, model=model)
@@ -199,79 +206,57 @@ if __name__ == '__main__':
     """
     configure a model for testing
     """
+    base = f'/home/tonglab/david/projects/p022_occlusion'
+    os.chdir(base)
+    sys.path.append(base)
 
     # often used occluders and visibility levels
-    occluders_fMRI = ['barHorz04', 'barVert12', 'barHorz08']
+    occluders_fMRI = ['barHorz08']
     occluders_behavioural = ['barHorz04', 'barVert04', 'barObl04', 'mudSplash', 'polkadot', 'polkasquare',
                              'crossBarOblique', 'crossBarCardinal', 'naturalUntexturedCropped2']
-    visibilities = [.1, .2, .4, .8]
+    visibilities = [.1, .2, .4, .6, .8]
 
 
-    class CFG:
-        # model
-        class M:
-            model_name = 'cornet_s'
-            identifier = 'classification_unaltered'  # used to name model directory, required
-            save_interval = 4  # preserve params at every n epochs
-            return_model = False  # return model object to environment after training
-            # init_params = ['contrastive_random_occluder', 32]   # starting params model and epoch (e.g. when starting transfer learning)
-            params_path = '/home/tonglab/david/masterScripts/DNN/zoo/pretrained_weights/cornet_s-1d3f7974.pth'
-            """
-            # cornet_s_custom parameters
-            model_name = 'cornet_s_custom'                             # used to load architecture, required
-            R = (1,2,4,2)                                       # recurrence, default = (1,2,4,2),
-            K = (3,3,3,3)                                       # kernel size, default = (3,3,3,3),
-            F = (64,128,256,512)                                # feature maps, default = (64,128,256,512)
-            S = 4                                               # feature maps scaling, default = 4
-            out_channels = 1                                    # number of heads, default = 1
-            head_depth = 1                                     # multi-layer head, default = 1
 
-            # cornet_st/flab parameters
-            model_name = 'cornet_flab'  # used to load architecture, required
-            kernel_size = (3, 3, 3, 3)                          # kernel size, default = (3,3,3,3),
-            num_features = (64,128,256,512)                     # feature maps, default = (64,128,256,512)
-            times = 2
-            out_channels = 1  # number of heads, default = 1
-            head_depth = 1  # multi-layer head, default = 1
-            """
+    # model
+    M = SimpleNamespace(
+        model_dir = 'in_silico/data/cornet_s_custom/occ-beh',
+        params_path = '/home/tonglab/david/projects/p022_occlusion/in_silico/data/cornet_s_custom/occ-beh/params/032.pt',
+    )
 
-        # dataset
-        class D:
-            dataset = 'ILSVRC2012'
-            contrast = 'occluder_translate'  # contrastive learning manipulation. Options: 'repeat_transform','occluder_translate'
-            transform = 'standard'
-            """
-            class Occlusion:
-                type = occluders_behavioural                       # occluder type or list thereof
-                prop_occluded = .8                                 # proportion of images to be occluded
-                visibility = visibilities                          # image visibility or list thereof, range(0,1)
-                colour = [(0,0,0),(127,127,127),(255,255,255)]      # occluder colours (unless naturalTextured type)
+    # dataset
+    D = SimpleNamespace(
+        dataset = 'ILSVRC2012',
+        #contrast = 'occluder_translate',  # contrastive learning manipulation. Options: 'repeat_transform','occluder_translate'
+        transform = 'alter',
+        #class_subset = []
+    )
+    """
+    class Occlusion:
+        type = occluders_behavioural                       # occluder type or list thereof
+        prop_occluded = .8                                 # proportion of images to be occluded
+        visibility = visibilities                          # image visibility or list thereof, range(0,1)
+        colour = [(0,0,0),(127,127,127),(255,255,255)]      # occluder colours (unless naturalTextured type)
 
-            class Blur:
-                sigmas = [0,1,2,4,8]
-                weights = [1,1,1,1,1]
+    class Blur:
+        sigmas = [0,1,2,4,8]
+        weights = [1,1,1,1,1]
 
-            class Noise:
-                type = 'gaussian'
-                ssnr = [.1,.2,.4,.8,1]
-                label = 'mixedNoise'
-            """
+    class Noise:
+        type = 'gaussian'
+        ssnr = [.1,.2,.4,.8,1]
+        label = 'mixedNoise'
+    """
 
-        # training
-        class T:
-            optimizer_name = 'SGD'  # SGD or ADAM
-            batch_size = 64  # calculated if not set
-            # learning_rate = 2 ** -7                 # calculated if not set
-            force_lr = False  # by default, learning rate continues existing schedule. Set to True to override this behaviour
-            momentum = .9
-            scheduler = 'StepLR'
-            step_size = 16
-            num_epochs = 32  # number of epochs to train for
-            learning = 'supervised_classification'  # supervised_classification, supervised_contrastive, self-supervised_contrastive
-            freeze_weights = None  # freeze params up to this index (for transfer learning) cornet_s = 84
-            nGPUs = -1  # if not set, or set to -1, all GPUs visible to pytorch will be used. Set to 0 to use CPU
-            GPUids = 1  # list of GPUs to use (ignored if nGPUs in [-1,0] or not set)
-            workers = 2  # number of CPU threads to use (calculated if not set)
-            last_epoch = None  # resume training from this epoch (set to None to use most recent)
+    # training
+    T = SimpleNamespace(
+        batch_size = 256,  # calculated if not set
+        learning = 'supervised_classification',  # supervised_classification, supervised_contrastive, self-supervised_contrastive
+        nGPUs = -1,  # if not set, or set to -1, all GPUs visible to pytorch will be used. Set to 0 to use CPU
+        GPUids = 1,  # list of GPUs to use (ignored if nGPUs in [-1,0] or not set)
+        workers = 2,  # number of CPU threads to use (calculated if not set)
+    )
 
+    os.chdir(f'/home/tonglab/david/projects/p022_occlusion')
+    CFG = SimpleNamespace(M=M,D=D,T=T)
     performance = test_model(CFG)
