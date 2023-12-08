@@ -2,15 +2,24 @@
 
 1. install ubuntu operating system
 
-2. update system to latest:
 
+2. update system to latest:
 sudo apt update
 sudo apt upgrade
 
-3. install pycharm and matlab (can be done through ubuntu software app / mathworks website)
+3. install and set up ssh
+sudo apt install ssh
+ssh-keygen -t ed25519 -C "david"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
 
-4. install gcc and cuda (see instructions at https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
+4. install different python versions
+sudo apt install wget build-essential libncursesw5-dev libssl-dev \
+libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt install python3.7 python3.8 python3.9 python3.10 python3.11 python3.12
 
+5. install gcc and cuda (see instructions at https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
 # these are the instructions as of 23-06-01
 sudo apt install build-essential
 sudo apt-get install linux-headers-$(uname -r)
@@ -24,22 +33,14 @@ sudo apt-get update
 sudo apt-get -y install cuda
 reboot
 
-5. install anaconda
-download from https://www.anaconda.com/products/distribution
-bash ~/Downloads/Anaconda3-2023.03-1-Linux-x86_64.sh
 
-6. install DL tools in pycharm terminal 
-conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+Steps 1-5 are performed by setup.sh, next steps are manual:
 
+6. install pycharm and matlab (can be done through ubuntu software app / mathworks website)
 
 7. add necessary datasets under ~/Datasets/
-8. add/make a project directory under ~/<your name>/
 
-# install and set up ssh
-sudo apt install ssh
-ssh-keygen -t ed25519 -C "david"
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
+8. make a project directory under ~/<your name>/
 
 
 ### SYNOLOGY BACK UP ###
@@ -57,28 +58,33 @@ rsync -avL --copy-links /home/tonglab/david david@DDCNAS.local:/volume1/NetBacku
 (crontab -l; echo "00 2 * * * rsync -aL --copy-links --delete --ignore-errors /home/tonglab/david david@DDCNAS.local:/volume1/NetBackup/ > /dev/null 2>&1";) | crontab
 
 # record system log info daily
-(crontab -l; echo "58  23 * * * /bin/sh /home/tonglab/david/masterScripts/misc/sar_report.sh";) | crontab
+(crontab -l; echo "58  23 * * * /bin/sh /home/tonglab/david/master_scripts/misc/sar_report.sh";) | crontab
 
 
 ### MOUNT DRIVES AT OTHER WORKSTATIONS
 
 sudo mkdir /home/tonglab/david
+sudo apt install cifs-utils smbclient
 sudo mount.smb3 //10.32.132.238/ddc /home/tonglab/david -o user=tonglab,uid=tonglab
 
 
 ### clone a virtual environment ###
 
-Do the following steps on the source machine:
+Do the following steps in the source environment:
 
-    workon [environment_name]
-    pip freeze > requirements.txt
-    copy requirements.txt to other PC
+    1. open a terminal (maybe in pycharm)
+    2. ensure the correct python and pip executables are selected.
+    	'which python' should print the path to your python executable in your virutal env.
+    	'which pip' should print the path to your pip executable in your virutal env.
+    3. 'pip freeze > requirements.txt' will make a txt file with all the package names and versions
+    
 
 On the other PC:
 
-    create a virtual environment using mkvirtualenv [environment_name]
-    workon [environment_name]
-    pip install -r requirements.txt
+    1. create new virtual environment (same version is the safest play)
+    2. repeat the previous step 2.
+    3. copy the requirements.txt from the original env. to the same location in this env.
+    4. 'pip install -r requirements.txt' will install the exact same set of packages.
 
 
 ### MATLAB TOOLS ###
@@ -96,23 +102,16 @@ sudo apt install meshlab
 
 
 ### BASH PROFILE ADDITIONS
-FSLDIR=/usr/local/fsl
+FSLDIR=${HOME}/fsl
 . ${FSLDIR}/etc/fslconf/fsl.sh
 PATH=${FSLDIR}/bin:${PATH}
-PATH=/Applications/fsl/bin:${PATH}
-export FSLDIR PATH
-export FREESURFER_HOME=$HOME/david/freesurfer
+export FREESURFER_HOME=/usr/local/freesurfer/7.3.2
+export SUBJECTS_DIR=$HOME/david/subjects/freesurfer
 source $FREESURFER_HOME/SetUpFreeSurfer.sh
+export FS_LICENSE=$FREESURFER_HOME/license.txt
 
 alias refresh="source $HOME/.bashrc"
 alias matlab="/usr/local/MATLAB/R2022b/bin/matlab"
-
-
-### USE SUPER KEY FOR CUT/COPY/PASTE ###
-change shortcuts directly in terminal preferences
-see file called super_as_ctrl.xmodmap in the same folder as this document
-place the following command as an ubuntu start up apps:
-xmodmap super_as_ctrl.xmodmap
 
 
 ### GIT ###
@@ -167,10 +166,12 @@ printf '\n\np022_occlusion\n'; cd $HOME/Dave/p022_occlusion; git reset --hard or
 alias multipush="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git add .; git commit -m '$(date)'; git push;
 printf '\n\np022_occlusion\n'; cd $HOME/Dave/p022_occlusion; git add DNN/analysis/scripts/.; git commit -m '$(date)'; git push;"
 
-# mount finn folders to folders on another workstation
-sudo mkdir /mnt/Dave
-sudo mount -t cifs //10.32.132.128/Dave /mnt/Dave --verbose -o user=dave
 
-
+### CONNECT TO YNIC VPN ###
+open terminal in /home/dave/ynic-vpn-config
+sudo openvpn --config ynic.conf
+username:ddc506
+password: *******bsc
+x2goclient --broker-url=//remote.ynic.york.ac.uk/
 
 

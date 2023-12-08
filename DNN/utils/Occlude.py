@@ -5,7 +5,6 @@ import glob
 from PIL import Image
 import torch
 import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
 import math
 import itertools
 from types import SimpleNamespace
@@ -26,8 +25,7 @@ class Occlude:
         self.occluder_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(224),
-            ])
+            transforms.RandomCrop(224)])
 
         # ensure occluders and visibilities are lists
         occ_types = [O.type] if isinstance(O.type, str) else O.type
@@ -113,30 +111,38 @@ class Occlude:
 
                 # if colour is specified as RGB, convert to tensor and normalise
                 if fill_col == 'random':
-                    fill_col = torch.rand((3,))
+                    fill_rgb = torch.rand((3,))
                 else:
-                    fill_col = torch.tensor(fill_col)
-                    if max(fill_col) > 1:
-                        fill_col = fill_col / 255
+                    fill_rgb = torch.tensor(fill_col)
+                    if max(fill_rgb) > 1:
+                        fill_rgb /= 255
 
                 # colourize
-                occluder[:3] *= fill_col[:, None, None]
+                occluder[:3] += fill_rgb[:, None, None]
 
 
             # transform
             occluder = self.occluder_transform(occluder)
 
-            # occluder mask is alpha channel tiled across RGB channels
-            occluder_mask = torch.tile(occluder[3, :, :], dims=(3, 1, 1))
-
-            # remove occluded pixels from image
-            image *= (1 - occluder_mask)
+            # get object and occluder RGB masks from occluder alpha channel 
+            occluded_pixels = torch.tile(occluder[3, :, :], dims=(3, 1, 1))
+            visible_pixels = 1 - occluded_pixels
+            
+            # zero occluded pixels in object and visible pixels in occluder
+            image *= visible_pixels
+            occluder[:3] *= occluded_pixels  # need for untextured
 
             # replace occluded pixels with occluder (dropping alpha channel)
             image += occluder[:3]
 
         return image
 
+    """
+    # Code for viewing tensor as image
+    import matplotlib.pyplot as plt
+    plt.imshow(image.permute(1,2,0))
+    plt.show()
+    """
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"

@@ -77,12 +77,10 @@ def run_NORDIC(subjects):
                     os.system(f"ln -s {op.abspath(otherdir)} {outdir}")
 
             # copy other files to statisfy bids requirements
-            for file_path in ['dataset_description.json',
-                              'participants.json',
-                              'README']:
+            for file_path in [
+                'dataset_description.json', 'participants.json', 'README']:
                 if not op.isfile(f"derivatives/NORDIC/{file_path}"):
-                    shutil.copy(file_path,
-                                f"derivatives/NORDIC/{file_path}")
+                    shutil.copy(file_path, f"derivatives/NORDIC/{file_path}")
 
 
 if __name__ == "__main__":

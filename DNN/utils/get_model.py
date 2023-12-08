@@ -4,43 +4,24 @@ import torch.nn as nn
 import math
 import zoo
 
-def get_model(M):
+def get_model(model_name, **kwargs):
 
-	if M.model_name.endswith('predify'):
-		base_model = M.model_name[:-8]
-	else:
-		base_model = M.model_name
+	try:
+		model = getattr(zoo, model_name)(**kwargs)
+	except:
+		model = getattr(zoo, model_name)()
 
-	model = getattr(zoo, base_model)
-		
-	# special handling for some cornet models
-	if base_model in ['cornet_st', 'cornet_flab', 'cornet_s_custom']:
-
-		model = model(M)
-
-		# random initialization
-		for mod in model.modules():
-			if isinstance(mod, nn.Conv2d):
-				n = mod.kernel_size[0] * mod.kernel_size[1] * mod.out_channels
-				mod.weight.data.normal_(0, math.sqrt(2. / n))
-			elif isinstance(mod, nn.Linear):
-				n = mod.in_features * mod.out_features
-				mod.weight.data.normal_(0, math.sqrt(2. / n))
-				mod.bias.data.zero_()
-			elif isinstance(mod, nn.BatchNorm2d):
-				mod.weight.data.fill_(1)
-				mod.bias.data.zero_()
-		
-		if M.model_name.endswith('predify'):
-			if not hasattr(M, 'keep_weights'):
-				M.keep_weights = True
-			from zoo.cornet_s_custom_predify import cornet_s_custom_predifySeparateHP as cornet_s_custom_predify
-			model = cornet_s_custom_predify(model, build_graph=True)#, random_init=True-M.keep_weights)
-	else:
-		if M.model_name != 'resnet50_big':
-			if not hasattr(M, 'pretrained') or M.pretrained is False:
-				model = model()
-			else:
-				model = model(pretrained=M.pretrained)
+	# random initialization
+	for mod in model.modules():
+		if isinstance(mod, nn.Conv2d):
+			n = mod.kernel_size[0] * mod.kernel_size[1] * mod.out_channels
+			mod.weight.data.normal_(0, math.sqrt(2. / n))
+		elif isinstance(mod, nn.Linear):
+			n = mod.in_features * mod.out_features
+			mod.weight.data.normal_(0, math.sqrt(2. / n))
+			mod.bias.data.zero_()
+		elif isinstance(mod, nn.BatchNorm2d):
+			mod.weight.data.fill_(1)
+			mod.bias.data.zero_()
 
 	return model

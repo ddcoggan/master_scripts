@@ -7,39 +7,43 @@ import numpy as np
 import torchvision.transforms as transforms
 from argparse import Namespace
 import sys
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 import shutil
 from types import SimpleNamespace
+import itertools
+from tqdm import tqdm
 
 sys.path.append(os.path.expanduser("~/david/master_scripts/DNN"))
+from utils import save_image_custom, predict, model_layer_labels
 
-def get_activations(M, image_dir, T=SimpleNamespace(), layers=None,
-                    sampler=None,
-                    norm_minibatch=False, save_input_samples=False, sample_input_dir=None, transform=None, shuffle=False):
+def get_activations(M, image_dir=None, inputs=None,
+                    T=SimpleNamespace(num_workers=2), layers=None, sampler=None,
+                    norm_minibatch=False, save_input_samples=False,
+                    sample_input_dir=None, transform=None, shuffle=False, 
+                    verbose=False, dtype='numpy'):
 
     torch.no_grad()
 
     # hardware
-    from utils import configure_hardware
-    T, device = configure_hardware(T, verbose=True)
+    device = torch.device('cuda') if torch.cuda.device_count() else torch.device('cpu')
 
     # model
     if not hasattr(M, 'model'):
-        print('loading model...')
+        print('Loading model...')
         from utils import get_model
-        model = get_model(M)
+        model = get_model(M.model_name, **{'M': M})
     else:
         model = M.model
     model.to(device)
 
-    #print(model)
+    if verbose: print(model)
 
 
     # load params
     if (not hasattr(M, 'params_loaded') or M.params_loaded is False) and (not hasattr(M, 'pretrained') or M.pretrained is False):
-        print('loading parameters...')
+        print('Loading parameters...')
         from utils import load_params
-        model = load_params(M.params_path, model=model)
+        model = load_params(M.params_path, model, 'model')
 
     if norm_minibatch:
         model.train()  # forces batch norm layers to use minibatch stats
@@ -57,51 +61,50 @@ def get_activations(M, image_dir, T=SimpleNamespace(), layers=None,
         from utils import get_transforms
         _, transform = get_transforms()
 
-
     # image loader
-    from utils import CustomDataSet
-    dataset = CustomDataSet(image_dir, transform=transform)
+    if image_dir is None:
+        dataset = TensorDataset(inputs, transform=transform)
+    else:
+        from utils import CustomDataSet
+        dataset = CustomDataSet(image_dir, transform=transform)
     loader = DataLoader(dataset, batch_size=T.batch_size, shuffle=shuffle, num_workers=T.num_workers, sampler=sampler, pin_memory=True)
 
+    
     # define activation hook
     def get_activation(idx):
         def hook(model, input, output):
             if type(output) == torch.Tensor:
-                activations[idx] = torch.concat([activations[idx], output.detach().cpu()])
+                if len(dataset.all_imgs) > T.batch_size:
+                    activations[idx] = torch.concat([activations[idx], 
+                                                     output.detach().cpu()])
+                else:
+                    # this doesnt blow up memory as much
+                    activations[idx] = output.detach().cpu()
             elif 'cornet_rt' in M.model_name and type(output) == tuple:
-                activations[idx] = torch.concat([torch.tensor(activations[idx]), output[0].detach().cpu()])
+                activations[idx] = torch.concat([activations[idx], output[0].detach().cpu()])
             else:
-                activations[idx].append(output)
+                activations[idx].append(output.detach().cpu())
         return hook
 
     # store activations in a dict with items for each layer
     activations = {}
 
     if not layers or 'input' in layers:
-        activations['input'] = torch.empty(0)
-
+        activations['input'] = torch.Tensor(0)
 
 
     # add activation hook to model
-
-
     if M.model_name in ['alexnet', 'vgg19']:
-        from utils import model_layer_labels
-        layers = model_layer_labels[M.model_name]
-        # set up activations dict
         for layer in layers:
-            activations[layer] = torch.empty(0)
-
-        # cycle through model registering forward hook
-        layer_counter = 0
-        for l, layer in enumerate(model.features):
-            model.features[l].register_forward_hook(get_activation(layers[layer_counter]))
-            layer_counter += 1
-        model.avgpool.register_forward_hook(get_activation(layers[layer_counter]))
-        layer_counter += 1
-        for l, layer in enumerate(model.classifier):
-            model.classifier[l].register_forward_hook(get_activation(layers[layer_counter]))
-            layer_counter += 1
+            activations[layer] = []
+            if layer in model_layer_labels[M.model_name]:
+                l = model_layer_labels[M.model_name].index(layer)
+                try:
+                    model.features[l].register_forward_hook(get_activation(layers[layer_counter]))
+                    layer_counter += 1
+                except:
+                    model.classifier[l].register_forward_hook(get_activation(layers[layer_counter]))
+                    layer_counter += 1
 
     elif M.model_name.startswith('PredNet'):
 
@@ -113,19 +116,30 @@ def get_activations(M, image_dir, T=SimpleNamespace(), layers=None,
         activation['feedforward_preGroupNorm'] = x_ff_beforeGN_Ctr
         activation['feedback_preGroupNorm'] = x_fb_beforeGN_Ctr
 
-
+    elif M.model_name == 'cornet_rt_hw3' and model.return_states:
+        activations = {**activations, **{l: {f'cyc{c:02}': torch.Tensor(0)
+            for c in range(model.num_cycles)} for l in layers}}
+        
     elif M.model_name == 'cornet_st' or M.model_name.startswith('cornet_rt'):
-
         for l, layer in enumerate(['V1', 'V2', 'V4', 'IT']):
             if not layers or layer in layers:
-                activations[layer] = []
+                activations[layer] = torch.Tensor(0)
                 getattr(model, layer).register_forward_hook(get_activation(layer))
+
+    elif M.model_name == 'cornet_s_custom' and M.return_states:
+        for l, layer in enumerate(['V1', 'V2', 'V4', 'IT']):
+            if not layers or layer in layers:
+                activations[layer] = {f'cyc{c:02}': torch.Tensor(0)
+                                      for c in range(M.R[l])}
+        if not layers or 'decoder' in layers:
+            activations['decoder'] = {'cyc00': torch.Tensor(0)}
+
 
     elif M.model_name.startswith('cornet'):
 
         for l, layer in enumerate(['V1','V2','V4','IT']):
             if not layers or layer in layers:
-                activations[layer] = torch.empty(0)
+                activations[layer] = torch.Tensor(0)
                 model[l].register_forward_hook(get_activation(layer))
 
     elif M.model_name.startswith('resnet'):
@@ -136,6 +150,10 @@ def get_activations(M, image_dir, T=SimpleNamespace(), layers=None,
         model.layer3.register_forward_hook(get_activation('layer3'))
         model.layer4.register_forward_hook(get_activation('layer4'))
         model.fc.register_forward_hook(get_activation('fc'))
+
+    elif M.model_name == 'VOneNet_resnet50':
+        activations['vone_block'] = []
+        model.vone_block.register_forward_hook(get_activation('vone_block'))
 
 
     elif M.model_name in ['inception_v3']:
@@ -155,45 +173,72 @@ def get_activations(M, image_dir, T=SimpleNamespace(), layers=None,
         model.Mixed_7c.register_forward_hook(get_activation('Mixed_7c'))
         model.fc.register_forward_hook(get_activation('fc'))
 
+
     if not layers or 'output' in layers:
-        activations['output'] = torch.empty(0)
+        activations['output'] = []
 
     #if T.nGPUs > 1: # TODO: fix this code to allow for data parallelism
     #    model = nn.DataParallel(model)
     # loop through batches, collecting activations
 
-    for batch, inputs in enumerate(loader):
-            
-        inputs = inputs.to(device)
-        outputs = model(inputs)
+    # loop through batches
+    with tqdm(loader, unit=f"batch({T.batch_size})") as tepoch:
+        for batch, inputs in enumerate(tepoch):
+    
 
-        # inputs and outputs need to be manually appended
-        if not layers or 'input' in layers:
-            activations['input'] = torch.concat([activations['input'], inputs.detach().cpu()], axis=0)
-        if not layers or 'output' in layers:
-            if isinstance(outputs, list):
-                activations['output'] = torch.concat([activations['output'], outputs[1].detach().cpu()], axis=0)
-            else:
-                activations['output'] = torch.concat([activations['output'], outputs.detach().cpu()], axis=0)
+            if type(inputs) is list:
+                inputs = inputs[0]
+            inputs = inputs.to(device)
+            outputs = model(inputs)
 
+            # special handling for cornet_rt_hw3
+            if M.model_name in ['cornet_rt_hw3', 'cornet_s_custom'] and \
+                    M.return_states:
+                for layer in layers:
+                    for cycle, states in outputs[layer].items():
+                        activations[layer][cycle] = torch.cat(
+                            [activations[layer][cycle], 
+                             states.detach().cpu()], dim=0)
 
-        # save some input images with class estimates
-        if batch == 0 and save_input_samples:
-            if 'classification' in M.params_path:
-                from utils import response
-                if M.out_channels > 1:
+            # inputs and outputs need to be manually appended
+            if not layers or 'input' in layers:
+                activations['input'].append(inputs.detach().cpu())
+            if not layers or 'output' in layers:
+                activations['output'].append(outputs.detach().cpu())
+
+            # save some input images with class estimates
+            if batch == 0 and save_input_samples:
+                if hasattr(M, 'out_channels') and M.out_channels > 1:
                     outputs = outputs[:,:,0]
-                responses = response(outputs, 'ILSVRC2012')
-            else:
-                responses=None
-            from utils import save_image_custom
-            if op.isdir(sample_input_dir):
-                shutil.rmtree(sample_input_dir)
-            os.makedirs(sample_input_dir, exist_ok=True)
-            save_image_custom(inputs.detach().cpu(), T, sample_input_dir, max_images=128, labels=responses)
+                try:
+                    responses = predict(outputs, 'ILSVRC2012')
+                except:
+                    responses=None
+                if op.isdir(sample_input_dir):
+                    shutil.rmtree(sample_input_dir)
+                os.makedirs(sample_input_dir, exist_ok=True)
+                save_image_custom(inputs.detach().cpu(), sample_input_dir, max_images=128, labels=responses)
 
-
-    return activations
+    # combine batches of tensors into single numpy array
+    if dtype == 'numpy':
+        activations_np = {}
+        if M.model_name in ['cornet_rt_hw3', 'cornet_s_custom'] and \
+                                             M.return_states:
+            for layer in activations:
+                activations_np[layer] = {}
+                for cycle in activations[layer]:
+                    activations_np[layer][cycle] = activations[layer][cycle].numpy()
+        else:
+            for layer in activations:
+                if not isinstance(activations[layer], list):
+                    activations_np[layer] = activations[layer].numpy()
+                else:
+                    activations_np[layer] = np.concatenate(
+                        [x.numpy() for x in activations[layer]], axis=0)
+        return activations_np
+    
+    else:
+        return activations
     
 
 if __name__ == '__main__':

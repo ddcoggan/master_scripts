@@ -33,7 +33,7 @@ def assign_outputs(outputs, CFG):
         if T.contrastive:
             # unstack recombine along view dimension
             outputs = torch.stack(torch.split(
-                outputs, [targets.shape[0]] * D.num_views,
+                outputs, outputs.shape[0] // D.num_views,
                 dim=0), dim=1)
             if hasattr(T, 'views_contr'):
                 outputs_contr = outputs[:, T.views_contr]

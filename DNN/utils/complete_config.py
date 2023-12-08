@@ -15,13 +15,6 @@ import shutil
 from types import SimpleNamespace
 import pandas as pd
 
-# as an alternative to controlling GPU utilization with pytorch, set pytorch to use any available GPUs and
-# use these lines to control which GPUs are visible to pytorch (run before importing pytorch)
-# This is most useful if calling many different objects that each need to know the GPU configuration,
-# as it does not require the passing of GPU configurations between them
-#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" # converts to order in nvidia-smi (not in cuda)
-#os.environ["CUDA_VISIBLE_DEVICES"] = f"[0,1]" # which devices to use
-
 # resolve = 'resume' to continue training with no changes to the configuration
 # resolve = 'new' to merge newly specified and original configs, with conflicts resolved in favour of new
 # resolve = 'orig' to merge newly specified and original configs, with conflicts resolved in favour of orig
@@ -30,7 +23,10 @@ import pandas as pd
 def complete_config(CFG, model_dir=None, resolve='new'):
 
     if model_dir is None:
-        model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/models/{CFG.M.model_name}/{CFG.M.identifier}')
+        if hasattr(CFG.M, 'model_dir'):
+            model_dir = CFG.M.model_dir
+        else:
+            model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/models/{CFG.M.model_name}/{CFG.M.identifier}')
 
     # sub model dir if transfer learning
     if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
@@ -116,7 +112,8 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             scheduler = 'StepLR',
             step_size = 30,
             SWA = False,
-            cutmix = False
+            cutmix = False,
+            AMP = True,
         ),
     )
     for default_params, params in zip([defaults.D, defaults.T], [D,T]):
@@ -145,6 +142,7 @@ def complete_config(CFG, model_dir=None, resolve='new'):
 
     if do_training:
 
+        import torch
         sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
 
         # remove warnings for predified networks
@@ -152,14 +150,13 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             import warnings
             warnings.simplefilter("ignore")
 
-        # configure hardware
-        from utils import configure_hardware
-        T, T.device = configure_hardware(T)
-
         # only load model if necessary for determining params
         load_model = not hasattr(T, 'batch_size') or not hasattr(T, 'learning_rate')
         if load_model:
 
+            # configure hardware
+            device = torch.device('cuda') if torch.cuda.device_count() else torch.device('cpu')
+            
             # load model
             from utils import get_model
             model = get_model(M)
@@ -169,6 +166,8 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             if num_classes != 1000 and T.classification:
                 from utils import change_output_size
                 model = change_output_size(model, M, num_classes)
+        else:
+            model = None
 
         # calculate optimal batch size
         if not hasattr(T, 'batch_size'):
@@ -177,15 +176,28 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             print(f'optimal batch size calculated at {T.batch_size}')
 
         # calculate optimal learning rate
-        if not hasattr(T, 'learning_rate'):
-            T.learning_rate = 2**-7 * np.sqrt(T.batch_size/2**5) # non-linear
-            #T.learning_rate * T.batch_size / 2 ** 5  # linear
+        if type(T.learning_rate) == str:
+            if T.learning_rate == 'batch_nonlinear':
+                T.learning_rate = 2**-7 * np.sqrt(T.batch_size/2**5)
+            elif T.learning_rate == 'batch_linear':
+                T.learning_rate = T.batch_size / 2**5
+            elif T.learning_rate == 'LRfinder':
+                from ignite.handlers import FastaiLRFinder
+                from ignite.engine import create_supervised_trainer
+                from utils import get_loaders, get_optimizer, get_criteria
+                loader_train, _ = get_loaders(D, T, 4)
+                lr_finder = FastaiLRFinder()
+                optimizer = get_optimizer(model, T)
+                criterion = get_criteria(T).items()[0]
+                trainer = create_supervised_trainer(
+                    model, optimizer, criterion, device=device)
+                with lr_finder.attach(trainer, end_lr=0.1) as finder:
+                    finder.run(train_loader)
+                    T.learning_rate = lr_finder.suggestion()
             print(f'initial learning rate calculated at {T.learning_rate}')
 
     # repack config
     CFG = SimpleNamespace(M=M, D=D, T=T)
 
-    if do_training and load_model:
-        return CFG, model  # stops model being reloaded
-    else:
-        return CFG
+    return CFG, model
+

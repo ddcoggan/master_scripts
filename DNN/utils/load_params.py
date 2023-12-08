@@ -1,54 +1,81 @@
 import torch
 
-def load_params(params, dest_object, object_type, modules='all'):
+def load_params(params, dst_object, object_type, modules='all'):
 
 	# if the path to params is submitted (rather than params themselves), load params
 	if type(params) == str:
-		params = torch.load(params)
+		params = torch.load(params, map_location=torch.device('cpu'))
 
-	key_config = {'model': ['model', 'state_dict'],
-				  'swa_model': ['swa_model'],
-				  'optimizer': ['optimizer'],
-				  'swa_optimizer': ['swa_optimizer'],
-				  'scheduler': ['scheduler'],
-				  'swa_scheduler': ['swa_scheduler']}
+	key_config = {
+		'model': ['model', 'state_dict'],
+		'swa_model': ['swa_model'],
+		'optimizer': ['optimizer'],
+		'swa_optimizer': ['swa_optimizer'],
+		'scheduler': ['scheduler'],
+		'swa_scheduler': ['swa_scheduler']}
 
+	state_dict_found = False
 	for key in key_config[object_type]:
 		if key in params:
-			source_params = params[key]
+			src_params = params[key]
+			state_dict_found = True
 			break
+	assert state_dict_found, \
+		f'No state dict found in params file, searched for {key_config[object_type]}'
 
-	# resolve key errors arising when 'module.' is prefixed to key
-	dest_wrapped = list(dest_object.state_dict().keys())[0].startswith('module')
-	source_wrapped = list(source_params.keys())[0].startswith('module')
-	if source_wrapped == dest_wrapped:
-		resolved_params = source_params
-	elif dest_wrapped:
-		resolved_params = {f'module.{key}': values for key, values in source_params.items()}
-	else:
-		resolved_params = {key[7:]: values for key, values in source_params.items()}
-		if list(resolved_params.keys())[0].startswith('module'):
-			resolved_params = {key[7:]: values for key, values in
-							   resolved_params.items()}
-	# load params
+
+	# resolve key errors arising when 'module.' is prefixed to either the source or dest keys
+	dst_keys = dst_object.state_dict().keys()
+	dst_wrapped = list(dst_keys)[0].startswith('module')
+	src_wrapped = list(src_params.keys())[0].startswith('module')
+	if dst_wrapped and not src_wrapped:
+		src_params = {f'module.{key}': values for key, values in src_params.items()}
+	elif src_wrapped and not dst_wrapped:
+		while list(src_params.keys())[0].startswith('module'):
+			src_params = {key[7:]: values for key, values in src_params.items()}
+	src_keys = src_params.keys()
+
+	# load entire parameter set
 	if modules == 'all':
-		dest_object.load_state_dict(resolved_params)
+		if set(dst_keys) != set(src_keys):
+			for dst_key in dst_keys:
+				if dst_key not in src_keys:
+					src_params[dst_key] = dst_object.state_dict()[dst_key]
+		dst_object.load_state_dict(src_params)
+
+	# load subset of params e.g. for transfer learning or partially matching architectures
 	else:
 		for module in modules:
 
-			# create a new state dict with matching keys to destination object
-			module_state_dict = {}
-			dest_module_state_dict = getattr(dest_object, module).state_dict()
-			for key in dest_module_state_dict:
-				resolved_key = f'{module}.{key}'
-				if resolved_key not in resolved_params:
-					for key_r, tensor_r in resolved_params.items():
-						if key_r.endswith(f'{module}.{key}') and \
-							tensor_r.shape == dest_module_state_dict[key].shape:
-							print('found key')
-							resolved_key = key_r
-							break
-				module_state_dict[key] = resolved_params[resolved_key]
-			getattr(dest_object, module).load_state_dict(module_state_dict)
+			# get destination module and state dict
+			dst_module = getattr(dst_object, module)
+			dst_params_mod = dst_module.state_dict()
+
+			# create source state dict for this module
+			src_params_mod = {key[len(module) + 1:]: src_params[key] for key in src_params
+							  if key.startswith(module)}
+			src_keys_mod = src_params_mod.keys()
+
+			# if state dicts have matching keys, load params
+			if dst_params_mod.keys() == set(src_keys_mod):
+				dst_module.load_state_dict(src_params_mod)
+			else:
+				# make new src dict with appropriate keys
+				new_src_params_mod = {}
+				for dst_key, dst_tensor in dst_params_mod.items():
+					# copy params over if key matches
+					if dst_key in src_keys_mod:
+						new_src_params_mod[dst_key] = src_params_mod[dst_key]
+					else:
+						# try finding params by matching ending of key and shape of tensor
+						for src_key, src_tensor in src_params_mod.items():
+							if src_key.endswith(key) and src_tensor.shape == dst_tensor.shape:
+								new_src_params_mod[dst_key] = src_params_mod[src_key]
+								break
+						# if this fails, copy the weights
+						UserWarning(f'no weights for layer {dst_key} found in params file, '
+									f'original weights will be kept')
+						new_src_params_mod[dst_key] = dst_params_mod[dst_key]
+				dst_module.load_state_dict(new_src_params_mod)
 	
-	return dest_object
+	return dst_object

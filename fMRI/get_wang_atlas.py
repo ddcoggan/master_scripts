@@ -19,10 +19,15 @@ def get_wang_atlas(subject):
                          "hcp_auto_download": True,
                          "hcp_credentials": "~/.hcp-passwd"}
     npythyrc_path = f'{fs_dir}/.npythyrc'
-    json.dump(neuropythy_params, open(npythyrc_path, 'w+'))
+    if not op.isfile(npythyrc_path):
+        json.dump(neuropythy_params, open(npythyrc_path, 'w+'))
+
+    roiname_array = (
+    "V1v", "V1d", "V2v", "V2d", "V3v", "V3d", "hV4", "VO1", "VO2",
+    "PHC1", "PHC2", "TO2", "TO1", "LO2", "LO1", "V3B", "V3A",
+    "IPS0", "IPS1", "IPS2", "IPS3", "IPS4", "IPS5", "SPL1", "FEF")
 
     # Get atlas as volume
-
     if len(glob.glob(f"{fs_dir}/{subject}/surf/??.wang15_mplbl.mgz")) < 2:
         os.system(f'docker run --rm ' \
                   f'--mount type=bind,src={fs_dir},dst=/subjects ' \
@@ -38,9 +43,6 @@ def get_wang_atlas(subject):
         if not op.isfile(outpath):
             os.system(f"mri_cor2label --i {vol_file} --stat --l {outpath} --surf {subject} {hemi} inflated")
 
-        roiname_array = ("V1v", "V1d", "V2v", "V2d", "V3v", "V3d", "hV4", "VO1", "VO2", "PHC1", "PHC2", \
-                         "TO2", "TO1", "LO2", "LO1", "V3B", "V3A", "IPS0", "IPS1", "IPS2", "IPS3", "IPS4", \
-                         "IPS5", "SPL1", "FEF")
         for r, roiname in enumerate(roiname_array):
 
             # Convert to label
@@ -56,6 +58,6 @@ def get_wang_atlas(subject):
             """
 
 if __name__ == "__main__":
-    get_wang_atlas(f'sub-F016')
+    get_wang_atlas(f'fsaverage')
 
 

@@ -1,0 +1,7 @@
+https://github.com/VU-Cog-Sci/wiki/wiki/Cutting-inflated-FreeSurfer-surfaces-to-obtain-a-flattened-cortical-surface
+
+http://www.nickhedger.co.uk/2021/06/making-flattened-cortical-surfaces-with.html
+https://drive.google.com/file/d/1S_dFeq_oFeVokdIy0YTHtgOuhTHjqh1A/view
+
+https://gallantlab.org/viewer-huth-2016/
+

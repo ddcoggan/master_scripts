@@ -27,10 +27,14 @@ class CogV1(nn.Module):
         self.complex = nn.MaxPool2d(2,2, return_indices=True)
 
         # lateral connections
-        self.conv_lateral = nn.Conv2d(out_channels, in_channels, kernel_size=3,
+        self.conv_lat1 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
                                       padding=1, bias=False)
-        self.norm_lateral = nn.BatchNorm2d(in_channels)
-        self.nonlin_lateral = nn.ReLU()
+        self.norm_lat1 = nn.BatchNorm2d(out_channels)
+        self.nonlin_lat1 = nn.ReLU()
+        self.conv_lat2 = nn.Conv2d(out_channels, in_channels, kernel_size=3,
+                                      padding=1, bias=False)
+        self.norm_lat2 = nn.BatchNorm2d(in_channels)
+        self.nonlin_lat2 = nn.ReLU()
 
 
     def forward(self, f, l, b, i=None):
@@ -43,9 +47,12 @@ class CogV1(nn.Module):
         f = self.norm(f)
 
         # outgoing lateral connection
-        l = self.conv_lateral(f)
-        l = self.norm_lateral(l)
-        l = self.nonlin_lateral(l)
+        l = self.conv_lat1(f)
+        l = self.norm_lat1(l)
+        l = self.nonlin_lat1(l)
+        l = self.conv_lat2(l)
+        l = self.norm_lat2(l)
+        l = self.nonlin_lat2(l)
 
         # final nonlin and maxpool
         f = self.nonlin(f)
@@ -95,17 +102,25 @@ class CogBlock(nn.Module):
                                     return_indices=True)
 
         # lateral connection
-        self.conv_lateral = nn.Conv2d(oc, ic, kernel_size=3, padding=1,
+        self.conv_lat1 = nn.Conv2d(oc, ic, kernel_size=3, padding=1,
                                       bias=False)
-        self.norm_lateral = nn.BatchNorm2d(ic)
-        self.nonlin_lateral = nn.ReLU()
+        self.norm_lat1 = nn.BatchNorm2d(ic)
+        self.nonlin_lat1 = nn.ReLU()
+        self.conv_lat2 = nn.Conv2d(ic, ic, kernel_size=3, padding=1,
+                                   bias=False)
+        self.norm_lat2 = nn.BatchNorm2d(ic)
+        self.nonlin_lat2 = nn.ReLU()
 
         # backward connection
         self.unpool_back = nn.MaxUnpool2d(kernel_size=2, stride=2)
-        self.conv_back = nn.ConvTranspose2d(oc, pc, kernel_size=3, padding=1,
+        self.conv_back1 = nn.ConvTranspose2d(oc, pc, kernel_size=3, padding=1,
                                             bias=False)
-        self.norm_back = nn.BatchNorm2d(pc)
-        self.nonlin_back = nn.ReLU()
+        self.norm_back1 = nn.BatchNorm2d(pc)
+        self.nonlin_back1 = nn.ReLU()
+        self.conv_back2 = nn.Conv2d(pc, pc, kernel_size=3, padding=1,
+                                             bias=False)
+        self.norm_back2 = nn.BatchNorm2d(pc)
+        self.nonlin_back2 = nn.ReLU()
 
 
     def forward(self, f, l, b, i):
@@ -138,15 +153,21 @@ class CogBlock(nn.Module):
         f += skip
 
         # outgoing lateral connection
-        l = self.conv_lateral(f)
-        l = self.norm_lateral(l)
-        l = self.nonlin_lateral(l)
+        l = self.conv_lat1(f)
+        l = self.norm_lat1(l)
+        l = self.nonlin_lat1(l)
+        l = self.conv_lat2(l)
+        l = self.norm_lat2(l)
+        l = self.nonlin_lat2(l)
 
         # outgoing backward connection
         b = self.unpool_back(f, i)
-        b = self.conv_back(b)
-        b = self.norm_back(b)
-        b = self.nonlin_back(b)
+        b = self.conv_back1(b)
+        b = self.norm_back1(b)
+        b = self.nonlin_back1(b)
+        b = self.conv_back2(b)
+        b = self.norm_back2(b)
+        b = self.nonlin_back2(b)
 
         # final nonlin and avgpool
         f = self.nonlin3(f)
@@ -277,6 +298,7 @@ if __name__ == "__main__":
     import sys
     from PIL import Image
     import os.path as op
+    import os
     import glob
     import torchvision.transforms as transforms
     from torchvision.datasets import ImageFolder
@@ -285,49 +307,59 @@ if __name__ == "__main__":
     sys.path.append(op.expanduser('~/david/master_scripts/image'))
     from image_processing import tile
 
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225]),
-    ])
+    sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
+    from utils import plot_conv_filters
 
-    model = nn.DataParallel(CogNet(cycles=10, return_states=True).cuda())
-    params = torch.load('/mnt/HDD2_16TB/projects/p022_occlusion/in_silico'
-                        '/models/cognet/v1/params/013.pt')
-    model.load_state_dict(params['model'])
-    batch_size = 8
-    data = ImageFolder(f'~/Datasets/ILSVRC2012/val', transform=transform)
-    loader = DataLoader(data, batch_size=batch_size,
-                            shuffle=True, num_workers=2)
-    for batch, (inputs, targets) in enumerate(loader):
-        if batch == 0:
-            inputs.cuda()
-            states = model(inputs)
-            for i in range(batch_size):
-                for cycle in states:
-                    image = states[cycle]['V2']['b'][i].detach().cpu().squeeze()
-                    image_array = np.array(image.permute(1, 2, 0))
-                    image_pos = image_array - image_array.min()
-                    image_scaled = image_pos * (255.0 / image_pos.max())
-                    image_PIL = Image.fromarray(image_scaled.astype(np.uint8))
-                    outpath = f'/home/tonglab/Desktop/cognet/b_{i}_{cycle}.png'
-                    image_PIL.save(outpath)
+    model_dir = '/mnt/HDD1_12TB/projects/p020_activeVision/models/cognet/v2'
+    params_dir = f'{model_dir}/params'
+    params_paths = [f'{params_dir}/000.pt', f'{params_dir}/004.pt']
 
-                    image = states[cycle]['V1']['l'][i].detach().cpu().squeeze()
-                    image_array = np.array(image.permute(1, 2, 0))
-                    image_pos = image_array - image_array.min()
-                    image_scaled = image_pos * (255.0 / image_pos.max())
-                    image_PIL = Image.fromarray(image_scaled.astype(np.uint8))
-                    outpath = (f'/home/tonglab/Desktop/cognet/l_{i}'
-                               f'_{cycle}.png')
-                    image_PIL.save(outpath)
-            break
+    for params_path in params_paths:
+        epoch = op.basename(params_path)[:-3]
 
-    for conn in ['b','l']:
-        outpath = f'/home/tonglab/Desktop/cognet/tiled_{conn}.png'
-        image_paths = sorted(glob.glob(f'/home/tonglab/Desktop/cognet/'
-                                       f'{conn}*.png'))
-        tile(image_paths, outpath, num_cols=10, base_gap=0, colgap=0, colgapfreq=0,
-             rowgap=8, rowgapfreq=1)
+        plot_conv_filters('module.V1.simple.weight', params_path,
+                          f'{op.dirname(op.dirname(params_path))}/'
+                          f'kernel_plots/epoch-{epoch}.png')
+
+        feature_maps_dir = (f'{model_dir}/feature_maps/epoch-{epoch}')
+        os.makedirs(feature_maps_dir, exist_ok=True)
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225]),
+        ])
+
+        model = nn.DataParallel(CogNet(cycles=10, return_states=True).cuda())
+        params = torch.load(params_path)
+        model.load_state_dict(params['model'])
+        batch_size = 8
+        data = ImageFolder(f'~/Datasets/ILSVRC2012/val', transform=transform)
+        loader = DataLoader(data, batch_size=batch_size,
+                                shuffle=True, num_workers=2)
+        for batch, (inputs, targets) in enumerate(loader):
+            if batch == 0:
+                inputs.cuda()
+                states = model(inputs)
+                for layer, conn in zip(['V1', 'V2'], ['l', 'b']):
+                    image_paths = []
+                    for i in range(batch_size):
+                        for cycle in states:
+                            image = states[cycle][layer][conn][i].detach().cpu().squeeze()
+                            image_array = np.array(image.permute(1, 2, 0))
+                            image_pos = image_array - image_array.min()
+                            image_scaled = image_pos * (255.0 / image_pos.max())
+                            image_PIL = Image.fromarray(image_scaled.astype(np.uint8))
+                            outpath = (f'{feature_maps_dir}/{layer}-'
+                                       f'{conn}_im{i}_cyc{cycle}.png')
+                            image_PIL.save(outpath)
+                            image_paths.append(outpath)
+                    outpath = f'{feature_maps_dir}/{layer}-{conn}_tiled.png'
+                    tile(image_paths, outpath, num_cols=10, base_gap=0,
+                         colgap=0, colgapfreq=0,
+                         rowgap=8, rowgapfreq=1)
+                break
+
+

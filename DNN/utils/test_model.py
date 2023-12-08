@@ -27,7 +27,7 @@ import pickle as pkl
 
 
 sys.path.append(os.path.expanduser('~/david/master_scripts/DNN'))
-from utils import accuracy
+from utils.accuracy import accuracy
 
 
 def test_model(CFG):  # model params, dataset params, training params

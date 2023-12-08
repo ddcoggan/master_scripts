@@ -4,19 +4,19 @@ def export_legend(legend, filename="legend.pdf"):
 	bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
 	fig.savefig(filename, dpi=300, bbox_inches=bbox)
 
-custom_defaults = {'font.size': 20,
-                   'lines.linewidth': 3,
-                   'lines.markeredgewidth': 2,
-                   'lines.markersize': 12,
+custom_defaults = {'font.size': 10,
+                   'lines.linewidth': 1,
+                   'lines.markeredgewidth': 1,
+                   'lines.markersize': 6,
                    'savefig.dpi': 300,
                    'legend.frameon': False,
                    'ytick.direction': 'in',
-                   'ytick.major.width': 1.6,
+                   'ytick.major.width': .8,
                    'xtick.direction': 'in',
-                   'xtick.major.width': 1.6,
+                   'xtick.major.width': .8,
                    'axes.spines.top': False,
                    'axes.spines.right': False,
-                   'axes.linewidth': 1.6}
+                   'axes.linewidth': .8}
 
 distinct_colours_255 = {
 	'red': (230, 25, 75),

@@ -4,7 +4,7 @@ import sys
 import os
 import shutil
 from types import SimpleNamespace
-from utils import Occlude
+from .Occlude import Occlude
 
 
 class MultipleViews:
@@ -14,25 +14,26 @@ class MultipleViews:
         self.transforms = transforms
         self.num_views = len(self.transforms)
         
-    def __call__(self, input):
+    def __call__(self, inputs):
 
-        return [self.transforms[v](input) for v in range(self.num_views)]
+        return [self.transforms[v](inputs) for v in range(self.num_views)]
 
 
 def get_transforms(D=SimpleNamespace()):
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
+                                     
     # default transforms
     transforms_train = [
         transforms.ToTensor(),
-        transforms.RandomResizedCrop(224),
+        transforms.RandomResizedCrop(224, antialias=True),
         transforms.RandomHorizontalFlip(),
         normalize,
     ]
-    transforms_val =[
+    transforms_val = [
         transforms.ToTensor(),
-        transforms.Resize(224),
+        transforms.Resize(224, antialias=True),
         transforms.CenterCrop(224),
         normalize,
     ]
@@ -41,7 +42,7 @@ def get_transforms(D=SimpleNamespace()):
     if hasattr(D, 'transform_type') and D.transform_type == 'contrastive':
         transforms_train = [
             transforms.ToTensor(),
-            transforms.RandomResizedCrop(224, scale=(0.8,1.0)),
+            transforms.RandomResizedCrop(224, scale=(0.8,1.0), antialias=True),
             transforms.RandomHorizontalFlip(),
             transforms.RandomApply([transforms.ColorJitter(
                 brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)],
@@ -62,7 +63,7 @@ def get_transforms(D=SimpleNamespace()):
     transform_val = transforms.Compose(transforms_val)
 
     # create multiple views
-    if D.num_views > 1:
+    if hasattr(D, 'num_views') and D.num_views > 1:
 
         # for views with different transforms, create list of transforms
         transforms_train = [transforms_train.copy() for _ in range(D.num_views)]

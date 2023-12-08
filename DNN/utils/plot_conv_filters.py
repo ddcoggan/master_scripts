@@ -13,32 +13,44 @@ import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 
 
-def plot_conv_filters(layer, params_path, outpath):
+def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
+                      filters=None):
 
-    params = torch.load(params_path)['model']
     os.makedirs(op.dirname(outpath), exist_ok=True)
 
-    if type(layer) == int:
-        layer_key = list(params.keys())[layer]
-    else:
-        layer_key = layer
+    if filters is None:
+        params = torch.load(params_path)
+        for key in ['model', 'state_dict']:
+            if key in params:
+                params = params[key]
+                break
+        if type(layer) == int:
+            layer_key = list(params.keys())[layer]
+        else:
+            layer_key = layer
 
-    # in case of wrapped model, find the right key
-    variations = [f'module.{layer_key}', layer_key[7:]]
-    var_counter = 0
-    while not layer_key in params:
-        layer_key = variations[var_counter]
-        var_counter += 1
+        # in case of wrapped model, find the right key
+        variations = [f'module.{layer_key}', layer_key[7:]]
+        var_counter = 0
+        while not layer_key in params:
+            layer_key = variations[var_counter]
+            var_counter += 1
+        filters = params[layer_key].cpu()
 
-    filters = params[layer_key].cpu()
             
-    num_filters,num_channels,x,y = filters.shape
+    num_chan_a,num_chan_b,x,y = filters.shape
+    num_filters = num_chan_a if num_chan_b == 3 else num_chan_b
     grid_size = math.ceil(np.sqrt(num_filters))
     montage_size = (x*grid_size, y*grid_size)
     montage = Image.new(size=montage_size, mode='RGB')
 
     for i in range(num_filters):
-        image_array = np.array(filters[i,:,:,:].permute(1, 2, 0))
+        if num_chan_a == 3:
+            image_array = np.array(filters[:, i, :, :].permute(0, 2, 1))
+        elif num_chan_b == 3:
+            image_array = np.array(filters[i, :, :, :].permute(1, 2, 0))
+        else:
+            Exception('one channel dimension must be 3')
         image_pos = image_array - image_array.min() # rescale to between 0,255 for PIL
         image_scaled = image_pos * (255.0 / image_pos.max())
         image = Image.fromarray(image_scaled.astype(np.uint8))
@@ -49,7 +61,7 @@ def plot_conv_filters(layer, params_path, outpath):
 
 if __name__ == "__main__":
 	params_path = (f'/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models'
-                 f'/cognet/v1/params/000.pt')
+                 f'/cognet/v1/params/best.pt')
 	plot_conv_filters('module.V1.simple.weight', params_path,
                       f'{op.dirname(op.dirname(params_path))}/'
                       f'kernel_plots/{op.basename(params_path)[:-3]}.png')

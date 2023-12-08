@@ -89,6 +89,7 @@ import scipy.misc
 import scipy.signal
 import matplotlib.pyplot as plt
 import math
+import itertools
 # PIL Image module needs some special handling to support different platforms
 try:
     import Image, ImageFile # will work on most installations
@@ -190,10 +191,11 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
     for image in image_paths:
         im = Image.open(image).convert('RGB')
         images.append(im)
-
+    images += [None] * (num_rows * num_cols - len(images))
+    
     # specify spatial arrangement of images
     order = 'F' if by_col else 'C'
-    image_locations = np.array(np.arange(len(images))).reshape(
+    image_locations = np.arange(len(images)).reshape(
         (num_rows, num_cols), order=order)
 
 
@@ -206,7 +208,8 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
         col_images = [images[x] for x in image_locations[:, col]]
         widths = []
         for col_image in col_images:
-            widths.append(col_image.size[0])
+            if col_image:
+                widths.append(col_image.size[0])
         max_width = np.max(widths)
         col_widths.append(max_width)
         col_coords.append(cumulative_width)
@@ -227,7 +230,8 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
         row_images = [images[x] for x in image_locations[row, :]]
         heights = []
         for row_image in row_images:
-            heights.append(row_image.size[1])
+            if row_image is not None:
+                heights.append(row_image.size[1])
         max_height = np.max(heights)
         row_heights.append(max_height)
         row_coords.append(cumulative_height)
@@ -241,10 +245,9 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
 
     # build tiled image
     montage = Image.new(mode='RGB', size=(cumulative_width, cumulative_height), color=bgcol)
-    for row in range(num_rows):
-        for col in range(num_cols):
-            image = images[image_locations[row,col]]
-
+    for row, col in itertools.product(range(num_rows), range(num_cols)):
+        image = images[image_locations[row,col]]
+        if image:
             # centre the image in the window
             width, height = image.size
             col_coord = col_coords[col] + math.floor((col_widths[col] - width)/2)

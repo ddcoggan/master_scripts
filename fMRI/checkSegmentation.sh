@@ -14,10 +14,9 @@ done
 cd $SUBJECTS_DIR
 freeview -v \
 $SUBJECT/mri/T1.mgz \
-$SUBJECT/mri/wm.mgz \
-$SUBJECT/mri/brainmask.mgz \
-$SUBJECT/mri/aseg.presurf.mgz:colormap=lut:opacity=0.2 \
--f $SUBJECT/surf/lh.white:edgecolor=blue \
-$SUBJECT/surf/lh.pial:edgecolor=red \
-$SUBJECT/surf/rh.white:edgecolor=blue \
-$SUBJECT/surf/rh.pial:edgecolor=red
+$SUBJECT/mri/wm.mgz:colormap=heat:opacity=0.40:heatscale=100,250 \
+$SUBJECT/mri/brainmask.mgz:visible=0 \
+-f $SUBJECT/surf/lh.smoothwm:edgecolor=blue \
+$SUBJECT/surf/lh.pial.T1:edgecolor=yellow \
+$SUBJECT/surf/rh.smoothwm:edgecolor=blue \
+$SUBJECT/surf/rh.pial.T1:edgecolor=yellow
