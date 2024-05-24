@@ -78,7 +78,7 @@ class CORnetCustomHead(nn.Module):
         else:
             return out[0]
 
-"""
+
 class CORblock_S_custom(nn.Module):
 
     def __init__(self, in_channels, out_channels, R, K, scale):
@@ -141,122 +141,6 @@ class CORblock_S_custom(nn.Module):
         return output
 
 
-def CORnet_S_custom(M):
-    
-    # fill in any missing parameters with defaults
-    defaults = {'R': (1,2,4,2), 'K': (3,3,3,3), 'F': (64,128,256,512), 'S': 4,
-                'out_channels': 1, 'head_depth': 1, 'head_width': 1}
-    for param, value in defaults.items():
-        if not hasattr(M, param):
-            setattr(M, param, value)
-
-    model = nn.Sequential(OrderedDict([
-        ('V1', nn.Sequential(OrderedDict([
-            ('cycle0', nn.Sequential(OrderedDict([
-                ('conv1', nn.Conv2d(
-                    3, M.F[0], kernel_size=7, stride=2, padding=3, bias=False)),
-                ('norm1', nn.BatchNorm2d(M.F[0])),
-                ('nonlin1', nn.ReLU(inplace=True)),
-                ('pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))]))),
-            ('CORblock', CORblock_S_custom(
-                M.F[0], M.F[0], R=M.R[0], K=M.K[0], scale=M.S))]))),
-        ('V2', CORblock_S_custom(M.F[0], M.F[1], R=M.R[1], K=M.K[1], scale=M.S)),
-        ('V4', CORblock_S_custom(M.F[1], M.F[2], R=M.R[2], K=M.K[2], scale=M.S)),
-        ('IT', CORblock_S_custom(M.F[2], M.F[3], R=M.R[3], K=M.K[3], scale=M.S)),
-        ('decoder', CORnetCustomHead(M.F[3], M.out_channels, M.head_depth, M.head_width))]))
-
-    # weight initialization
-    for mod in model.modules():
-        if isinstance(mod, nn.Conv2d):
-            n = mod.kernel_size[0] * mod.kernel_size[1] * mod.out_channels
-            mod.weight.data.normal_(0, math.sqrt(2. / n))
-        elif isinstance(mod, nn.Linear):
-            n = mod.in_features * mod.out_features
-            mod.weight.data.normal_(0, math.sqrt(2. / n))
-            mod.bias.data.zero_()
-        elif isinstance(mod, nn.BatchNorm2d):
-            mod.weight.data.fill_(1)
-            mod.bias.data.zero_()
-
-    return model
-
-"""
-
-
-class CORblock_S_custom(nn.Module):
-
-    def __init__(self, in_channels, out_channels, R, K, scale,
-                 return_states=False):
-        super().__init__()
-
-        self.times = R
-        self.return_states = return_states
-
-        self.conv_input = nn.Conv2d(in_channels, out_channels, kernel_size=1,
-                                    bias=False)
-        self.skip = nn.Conv2d(out_channels, out_channels,
-                              kernel_size=1, stride=2, bias=False)
-        self.norm_skip = nn.BatchNorm2d(out_channels)
-
-        self.conv1 = nn.Conv2d(out_channels, out_channels * scale,
-                               kernel_size=1, bias=False)
-        self.nonlin1 = nn.ReLU(inplace=True)
-
-        self.conv2 = nn.Conv2d(out_channels * scale, out_channels * scale,
-                               kernel_size=K, stride=2,
-                               padding=int((K - 1) / 2), bias=False)
-        self.nonlin2 = nn.ReLU(inplace=True)
-
-        self.conv3 = nn.Conv2d(out_channels * scale, out_channels,
-                               kernel_size=1, bias=False)
-        self.nonlin3 = nn.ReLU(inplace=True)
-
-        self.output = Identity()  # for easy access to this block's output
-
-        # need BatchNorm for each time step for training to work well
-        for t in range(self.times):
-            setattr(self, f'norm1_{t}', nn.BatchNorm2d(out_channels * scale))
-            setattr(self, f'norm2_{t}', nn.BatchNorm2d(out_channels * scale))
-            setattr(self, f'norm3_{t}', nn.BatchNorm2d(out_channels))
-
-    def forward(self, inp):
-
-        if self.return_states:
-            states = {}
-
-        x = self.conv_input(inp)
-
-        for t in range(self.times):
-            if t == 0:
-                skip = self.norm_skip(self.skip(x))
-                self.conv2.stride = (2, 2)
-            else:
-                skip = x
-                self.conv2.stride = (1, 1)
-
-            x = self.conv1(x)
-            x = getattr(self, f'norm1_{t}')(x)
-            x = self.nonlin1(x)
-
-            x = self.conv2(x)
-            x = getattr(self, f'norm2_{t}')(x)
-            x = self.nonlin2(x)
-
-            x = self.conv3(x)
-            x = getattr(self, f'norm3_{t}')(x)
-
-            x += skip
-            x = self.nonlin3(x)
-            output = self.output(x)
-            if self.return_states:
-                states[f'cyc{t:02}'] = output
-
-        if self.return_states:
-            return output, states
-        else:
-            return output
-
-
 class CORnet_S_custom(nn.Module):
 
     def __init__(self, M):
@@ -265,9 +149,7 @@ class CORnet_S_custom(nn.Module):
         # fill in any missing parameters with defaults
         defaults = {
             'R': (1, 2, 4, 2), 'K': (3, 3, 3, 3), 'F': (64, 128, 256, 512),
-            'S': 4, 'out_channels': 1, 'head_depth': 1, 'head_width': 1,
-            'return_states': False, 'return_blocks': [
-                'V1', 'V2',  'V4', 'IT', 'decoder']}
+            'S': 4, 'out_channels': 1, 'head_depth': 1, 'head_width': 1}
 
         for param, value in defaults.items():
             if not hasattr(M, param):
@@ -283,17 +165,13 @@ class CORnet_S_custom(nn.Module):
                 ('nonlin1', nn.ReLU(inplace=True)),
                 ('pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))]))),
             ('CORblock', CORblock_S_custom(
-                M.F[0], M.F[0], R=M.R[0], K=M.K[0], scale=M.S,
-                return_states=M.return_states))]))
+                M.F[0], M.F[0], R=M.R[0], K=M.K[0], scale=M.S))]))
         self.V2 = CORblock_S_custom(
-            M.F[0], M.F[1], R=M.R[1], K=M.K[1], scale=M.S,
-                return_states=M.return_states)
+            M.F[0], M.F[1], R=M.R[1], K=M.K[1], scale=M.S)
         self.V4 = CORblock_S_custom(
-            M.F[1], M.F[2], R=M.R[2], K=M.K[2], scale=M.S,
-                return_states=M.return_states)
+            M.F[1], M.F[2], R=M.R[2], K=M.K[2], scale=M.S)
         self.IT = CORblock_S_custom(
-            M.F[2], M.F[3], R=M.R[3], K=M.K[3], scale=M.S,
-                return_states=M.return_states)
+            M.F[2], M.F[3], R=M.R[3], K=M.K[3], scale=M.S)
         self.decoder = CORnetCustomHead(
             M.F[3], M.out_channels, M.head_depth, M.head_width)
 
@@ -313,16 +191,6 @@ class CORnet_S_custom(nn.Module):
 
     def forward(self, inp):
 
-        if self.M.return_states:
-            states = {}
-            x, states['V1'] = self.V1(inp)
-            x, states['V2'] = self.V2(x)
-            x, states['V4'] = self.V4(x)
-            x, states['IT'] = self.IT(x)
-            states['decoder'] = {'cyc00': self.decoder(x)}
-            states = {k: v for k, v in states.items() if k in self.M.return_blocks}
-            return states
-        else:
             x = self.V1(inp)
             x = self.V2(x)
             x = self.V4(x)

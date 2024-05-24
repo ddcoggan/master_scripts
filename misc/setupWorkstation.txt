@@ -92,6 +92,7 @@ SPM
 MrTools
 PsychToolbox
 NORDIC_Raw
+analyzePRF
 
 
 ### NEURO TOOLS ###
@@ -173,5 +174,29 @@ sudo openvpn --config ynic.conf
 username:ddc506
 password: *******bsc
 x2goclient --broker-url=//remote.ynic.york.ac.uk/
+
+### PSYCHOPY ###
+# install stand-alone psychopy (needed for configuring monitors)
+# start a new Python 3.8 environment
+# if CPU arch is arm64 (i.e. apple silicon):
+	# ensure python version with x86-64 architectureis is downloaded manually
+	# that architecture is set to x86-64
+	env /usr/bin/arch -x86_64 /bin/zsh --login
+# ensure that pip/ip3/python/python3 still point to executables in project venv
+# install psychopy with:
+pip install psychopy
+
+# matlab engine
+follow instructions here: https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
+# at last install, this failed with R2023a when using python 3.11, but 3.10 worked
+when installing from command line in pycharm, the installer will use whatever the default python installer is when you initialize a terminal, even if 'which python' points to a different version, e.g. the one in your venv. To fix this, temporarily change your bashrc file to alias python to your venv python before running the 'python -m pip install .' command.
+
+# docker
+https://docs.docker.com/engine/install/ubuntu/
+Follow steps, and also the steps here:
+https://docs.docker.com/engine/install/linux-postinstall/
+to be able to run docker without sudo priveleges (necessary for calling docker inside python scripts)
+
+
 
 

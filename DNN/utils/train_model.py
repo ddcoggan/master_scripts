@@ -7,7 +7,7 @@ import os
 import os.path as op
 from PIL import Image
 from datetime import datetime
-dtnow, nowstr = datetime.now, "%y/%m/%d %H:%M:%S"
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from types import SimpleNamespace
@@ -22,19 +22,20 @@ import torch.nn.functional as F
 import copy
 from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
 
-sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
-from utils.accuracy import accuracy
-from utils.assign_outputs import assign_outputs
-from utils.AverageMeter import AverageMeter
-from utils.cutmix import cutmix
-from utils.plot_performance import plot_performance
-from utils.save_image_custom import save_image_custom
+from accuracy import accuracy
+from assign_outputs import assign_outputs
+from AverageMeter import AverageMeter
+from cutmix import cutmix
+from plot_performance import plot_performance
+from save_image_custom import save_image_custom
+
 
 #torch.backends.cudnn.benchmark = True
 #torch.autograd.set_detect_anomaly(True)
 torch.random.manual_seed(42)
 
-
+def now():
+    return datetime.now().strftime("%y/%m/%d %H:%M:%S")
 
 def train_model(CFG, model=None, verbose=False):
 
@@ -55,7 +56,7 @@ def train_model(CFG, model=None, verbose=False):
     # configure hardware
     num_GPUs = torch.cuda.device_count()
     device = torch.device('cuda') if num_GPUs else torch.device('cpu')
-    num_workers = num_GPUs * 8 if os.cpu_count() < 33 else num_GPUs * 16
+    num_workers = num_GPUs * 8 if os.cpu_count() <= 32 else num_GPUs * 8
     print(f'{num_workers} workers') if verbose else print()
 
     # image processing
@@ -91,7 +92,7 @@ def train_model(CFG, model=None, verbose=False):
     # model
     if model is None:
         from utils import get_model
-        model = get_model(M.model_name, **{'M': M})
+        model = get_model(M.model_name, {'M': M})
     print(model) if verbose else print()
 
     # find model params
@@ -124,7 +125,7 @@ def train_model(CFG, model=None, verbose=False):
                           f'requires_grad: {param.requires_grad}')
 
     # put model on device
-    if T.nGPUs > 1:
+    if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     model.to(device)
 
@@ -172,8 +173,8 @@ def train_model(CFG, model=None, verbose=False):
 
             for batch, (inputs, targets) in enumerate(tepoch):
 
-                now = dtnow().strftime(nowstr)
-                tepoch.set_description(f'{now} | {train_eval} | epoch'
+
+                tepoch.set_description(f'{now()} | {train_eval.zfill(5)} | epoch'
                                        f' {epoch}/{T.num_epochs}')
 
                 # apply cutmix
@@ -185,7 +186,7 @@ def train_model(CFG, model=None, verbose=False):
                     targets = trg_frgrnd if T.cutmix_frgrnd else targets
 
                 # save some input images after one successful batch
-                if epoch == 1 and batch == 32:
+                if epoch == 0 and batch == 32:
                     save_image_custom(
                         inputs, f'{M.model_dir}/sample_training_inputs')
 
@@ -209,8 +210,8 @@ def train_model(CFG, model=None, verbose=False):
 
                     # contrastive accuracy and loss
                     if T.contrastive:
-                        targets_contr = targets if \
-                            T.contrastive_supervised else None
+                        targets_contr = targets if hasattr(T, 'contrastive_supervised') and \
+                        T.contrastive_supervised else None
                         loss_contr = criteria['contr'](outputs_contr,
                                                        targets_contr)
                         epoch_tracker['loss_contr'].update(
@@ -238,14 +239,13 @@ def train_model(CFG, model=None, verbose=False):
 
                 # display performance metrics for this batch
                 postfix_string = ''
-                current_lr = optimizer.param_groups[0]['lr'] * \
-                             (train_eval == 'train' and epoch != 0)
                 for metric in [m for m in metrics if m != 'acc5']:
                     postfix_string += (
                         f"{metric}={epoch_tracker[metric].val:.4f}"
                         f"({epoch_tracker[metric].avg:.4f}) ")
-                postfix_string += f"lr={current_lr:.5f}"
-                tepoch.set_postfix_str(postfix_string)
+                lr_string = (f'lr={optimizer.param_groups[0]["lr"]:.5f}' if
+                    train_eval == 'train' else '')
+                tepoch.set_postfix_str(postfix_string + lr_string)
 
                 # update model
                 if train_eval == 'train' and epoch > 0:
@@ -266,7 +266,7 @@ def train_model(CFG, model=None, verbose=False):
                     optimizer.zero_grad(set_to_none=True)
 
         # add performance for this epoch
-        new_stats = {'time': [now], 'epoch': [epoch],
+        new_stats = {'time': [now()], 'epoch': [epoch],
                      'train_eval': [train_eval], 'lr': [current_lr]}
         new_stats = {**new_stats,
                      **{key: np.array(value.avg, dtype="float16")
@@ -282,8 +282,9 @@ def train_model(CFG, model=None, verbose=False):
 
         return model, optimizer, scaler, performance
 
+
     # train / eval loop
-    for epoch in list(range(max(1, T.checkpoint+1), T.num_epochs + 1)):
+    for epoch in list(range(max(0, T.checkpoint), T.num_epochs)):
 
         # train
         model.train()

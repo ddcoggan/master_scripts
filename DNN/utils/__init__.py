@@ -2,7 +2,6 @@ import os.path as op
 import sys
 sys.path.append(op.expanduser('~/david/master_scripts/DNN/utils'))
 from .accuracy import accuracy
-from .AlterImages import AlterImages
 from .Occlude import Occlude
 from .change_output_size import change_output_size
 #from .get_LRP_maps import get_LRP_maps
@@ -21,7 +20,7 @@ from .ContrastiveLoss import ContrastiveLoss
 from .configure_hardware import configure_hardware
 from .calculate_batch_size import calculate_batch_size
 from .get_transforms import get_transforms
-from .CustomDataSet import CustomDataSet
+from .custom_dataset import CustomDataSet
 from .predict import predict
 from .complete_config import complete_config
 from .config_to_text import config_to_text

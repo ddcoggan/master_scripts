@@ -1,16 +1,12 @@
 import os,glob
-
-for hardFile in glob.glob('/mnt/NVMe1_1TB/projects/*'):
-	linkFile = f'/home/tonglab/david/projects'
-	os.system(f'ln -s {hardFile} {linkFile}')
-for hardFile in glob.glob('/mnt/HDD1_12TB/projects/*'):
-	linkFile = f'/home/tonglab/david/projects'
-	os.system(f'ln -s {hardFile} {linkFile}')
-for hardFile in glob.glob('/mnt/HDD2_16TB/projects/*'):
-	linkFile = f'/home/tonglab/david/projects'
-	os.system(f'ln -s {hardFile} {linkFile}')
-for hardFile in glob.glob('/mnt/HDD1_12TB/*'):
-	if not hardFile.endswith('projects'):
-		linkFile = f'/home/tonglab/david'
-		os.system(f'ln -s {hardFile} {linkFile}')
-	
+# all projects into single folder
+for hard_file in glob.glob('/mnt/HDD1/projects_p001-p021/*'):
+	link_file = f'/mnt/SSD2/projects'
+	os.system(f'ln -s {hard_file} {link_file}')
+for hard_file in glob.glob('/mnt/HDD2/projects/*'):
+	link_file = f'/mnt/SSD2/projects'
+	os.system(f'ln -s {hard_file} {link_file}')
+# all data subfolders into single home folder
+for hard_file in glob.glob('/mnt/SSD2/*'):
+	link_file = f'/home/david/david'
+	os.system(f'ln -s {hard_file} {link_file}')	

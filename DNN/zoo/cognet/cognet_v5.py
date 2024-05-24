@@ -33,14 +33,10 @@ class CogV1(nn.Module):
         self.complex = nn.MaxPool2d(kernel_size=2,stride=2, return_indices=True)
 
         # lateral connections
-        self.conv_lat1 = nn.Conv2d(oc, oc, kernel_size=3,
+        self.conv_lat = nn.Conv2d(oc, ic, kernel_size=3,
                                       padding=1, bias=False)
-        self.norm_lat1 = nn.BatchNorm2d(oc)
-        self.nonlin_lat1 = nn.ReLU()
-        self.conv_lat2 = nn.Conv2d(oc, ic, kernel_size=3,
-                                      padding=1, bias=False)
-        self.norm_lat2 = nn.BatchNorm2d(ic)
-        self.nonlin_lat2 = nn.ReLU()
+        self.norm_lat = nn.BatchNorm2d(ic)
+        self.nonlin_lat = nn.ReLU()
 
 
     def forward(self, inputs):
@@ -56,12 +52,9 @@ class CogV1(nn.Module):
         f = self.norm(f)
 
         # outgoing lateral connection
-        l = self.conv_lat1(f)
-        l = self.norm_lat1(l)
-        l = self.nonlin_lat1(l)
-        l = self.conv_lat2(l)
-        l = self.norm_lat2(l)
-        l = self.nonlin_lat2(l)
+        l = self.conv_lat(f)
+        l = self.norm_lat(l)
+        l = self.nonlin_lat(l)
 
         # final nonlin and maxpool
         f = self.nonlin(f)
@@ -116,14 +109,10 @@ class CogBlock(nn.Module):
 
         # backward connection
         self.unpool_back = nn.MaxUnpool2d(kernel_size=2, stride=2)
-        self.conv_back1 = nn.Conv2d(oc, oc, kernel_size=3, padding=1,
-                                            bias=False)
-        self.norm_back1 = nn.BatchNorm2d(oc)
-        self.nonlin_back1 = nn.ReLU()
-        self.conv_back2 = nn.Conv2d(oc, pc, kernel_size=3, padding=1,
+        self.conv_back = nn.Conv2d(oc, pc, kernel_size=3, padding=1,
                                              bias=False)
-        self.norm_back2 = nn.BatchNorm2d(pc)
-        self.nonlin_back2 = nn.ReLU()
+        self.norm_back = nn.BatchNorm2d(pc)
+        self.nonlin_back = nn.ReLU()
 
 
     def forward(self, inputs):
@@ -163,12 +152,10 @@ class CogBlock(nn.Module):
 
         # outgoing backward connection
         b = self.unpool_back(f, i)
-        b = self.conv_back1(b)
-        b = self.norm_back1(b)
-        b = self.nonlin_back1(b)
-        b = self.conv_back2(b)
-        b = self.norm_back2(b)
-        b = self.nonlin_back2(b)
+        if self.prev_channels != self.in_channels:
+            b = self.conv_back(b)
+            b = self.norm_back(b)
+            b = self.nonlin_back(b)
 
         # final nonlin and avgpool
         f = self.nonlin3(f)
@@ -297,7 +284,7 @@ class CogNet(nn.Module):
 
 if __name__ == "__main__":
 
-    version = 'v4'
+    version = 'v5'
     import sys
     from PIL import Image
     import os.path as op

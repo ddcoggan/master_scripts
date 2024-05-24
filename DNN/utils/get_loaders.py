@@ -21,6 +21,11 @@ def get_loaders(D,T,num_workers):
 
     data_train = ImageFolder(path_train, transform=transform_train)
     data_val = ImageFolder(path_val, transform=transform_val)
+    
+    if hasattr(D, 'class_subset'):
+        from torch.utils.data import Subset
+        idxs = [i for i, image_data in enumerate(val_data.imgs) if image_data[1] in D.class_subset]
+        val_data = Subset(val_data, idxs)
 
     loader_train = DataLoader(data_train, batch_size=batch_size_adjusted,
                               shuffle=True, num_workers=num_workers, drop_last=True)

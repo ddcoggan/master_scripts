@@ -19,7 +19,7 @@ def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
     os.makedirs(op.dirname(outpath), exist_ok=True)
 
     if filters is None:
-        params = torch.load(params_path)
+        params = torch.load(params_path, map_location='cpu')
         for key in ['model', 'state_dict']:
             if key in params:
                 params = params[key]
@@ -39,7 +39,7 @@ def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
 
             
     num_chan_a,num_chan_b,x,y = filters.shape
-    num_filters = num_chan_a if num_chan_b == 3 else num_chan_b
+    num_filters = num_chan_a if num_chan_b == 3 else num_chan_b if num_chan_a   == 3 else num_chan_a*num_chan_b
     grid_size = math.ceil(np.sqrt(num_filters))
     montage_size = (x*grid_size, y*grid_size)
     montage = Image.new(size=montage_size, mode='RGB')
@@ -50,7 +50,7 @@ def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
         elif num_chan_b == 3:
             image_array = np.array(filters[i, :, :, :].permute(1, 2, 0))
         else:
-            Exception('one channel dimension must be 3')
+            image_array = filters.flatten(end_dim=1)[i].tile((3,1,1)).permute(1,2,0).numpy()
         image_pos = image_array - image_array.min() # rescale to between 0,255 for PIL
         image_scaled = image_pos * (255.0 / image_pos.max())
         image = Image.fromarray(image_scaled.astype(np.uint8))
@@ -60,9 +60,9 @@ def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
     montage.save(outpath)
 
 if __name__ == "__main__":
-	params_path = (f'/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models'
-                 f'/cognet/v1/params/best.pt')
-	plot_conv_filters('module.V1.simple.weight', params_path,
+	params_path = (f'/home/tonglab/david/models'
+                 f'/cornet_s_V1_v6/xform-cont/params/best_043.pt')
+	plot_conv_filters('module.V1.conv.weight', params_path,
                       f'{op.dirname(op.dirname(params_path))}/'
                       f'kernel_plots/{op.basename(params_path)[:-3]}.png')
         

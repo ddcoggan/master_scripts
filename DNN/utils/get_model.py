@@ -1,15 +1,27 @@
 import os
+import os.path as op
 import sys
 import torch.nn as nn
 import math
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 import zoo
+from torchvision import models
 
-def get_model(model_name, **kwargs):
+def get_model(model_name, kwargs):
 
-	try:
-		model = getattr(zoo, model_name)(**kwargs)
-	except:
-		model = getattr(zoo, model_name)()
+	if hasattr(models, model_name):
+		try:
+			model = getattr(models, model_name)(**kwargs)
+		except:
+			UserWarning('kwargs not accepted for this model, ignoring...')
+			model = getattr(models, model_name)()
+	else:
+		try:
+			model = getattr(zoo, model_name)(**kwargs)
+		except:
+			UserWarning('kwargs not accepted for this model, ignoring...')
+			model = getattr(zoo, model_name)()
 
 	# random initialization
 	for mod in model.modules():

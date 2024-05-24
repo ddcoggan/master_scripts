@@ -160,7 +160,7 @@ def _plotfftinfo(imsize):
     L = imsize[0]
     W = imsize[1]
     # Make meshgrid
-    [fx, fy] = np.meshgrid(range(-W/2,W/2), range(-L/2,L/2))
+    [fx, fy] = np.meshgrid(range(-W//2,W//2), range(-L//2,L//2))
     # Create maps
     fftinfo={}
     fftinfo['sf'] = ifftshift(np.sqrt(fx**2 + fy**2)) # spatial frequency
@@ -189,7 +189,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
     # load images
     images = []
     for image in image_paths:
-        im = Image.open(image).convert('RGB')
+        im = Image.open(image).convert('RGBA')
         images.append(im)
     images += [None] * (num_rows * num_cols - len(images))
     
@@ -244,7 +244,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
         cumulative_height += max_height
 
     # build tiled image
-    montage = Image.new(mode='RGB', size=(cumulative_width, cumulative_height), color=bgcol)
+    montage = Image.new(mode='RGBA', size=(cumulative_width, cumulative_height), color=bgcol)
     for row, col in itertools.product(range(num_rows), range(num_cols)):
         image = images[image_locations[row,col]]
         if image:
@@ -281,26 +281,30 @@ def resize_by_dim(image_path, dim='width', new_size=256, out_path=None):
     
     
 
-def center_crop_resize(imagePath, outPath, imageSize=[512,512]):
+def center_crop_resize(image, out_path=None, image_size=[512,512]):
 
-    image = Image.open(imagePath).convert('RGB')
-    oldImSize = image.size
-    minLength = min(oldImSize)
-    smallestDim = oldImSize.index(minLength)
-    biggestDim = np.setdiff1d([0,1], smallestDim)[0]
-    newMaxLength = int((imageSize[0]/oldImSize[smallestDim]) * oldImSize[biggestDim])
-    newShape = [0, 0]
-    newShape[smallestDim] = imageSize[0]
-    newShape[biggestDim] = newMaxLength
-    resizedImage = image.resize(newShape)
+    if type(image) is str:
+        image = Image.open(image).convert('RGBA')
+    old_im_size = image.size
+    min_length = min(old_im_size)
+    smallest_dim = old_im_size.index(min_length)
+    biggest_dim = np.setdiff1d([0,1], smallest_dim)[0]
+    new_max_length = int((image_size[0]/old_im_size[smallest_dim]) * old_im_size[biggest_dim])
+    new_shape = [0, 0]
+    new_shape[smallest_dim] = image_size[0]
+    new_shape[biggest_dim] = new_max_length
+    resized_image = image.resize(new_shape)
 
-    left = int((newShape[0] - imageSize[0]) / 2)
-    right = newShape[0] - left
-    top = int((newShape[1] - imageSize[1]) / 2)
-    bottom = newShape[1] - top
-    croppedImage = resizedImage.crop((left, top, right, bottom))
-
-    croppedImage.save(outPath)
+    left = int((new_shape[0] - image_size[0]) / 2)
+    right = new_shape[0] - left
+    top = int((new_shape[1] - image_size[1]) / 2)
+    bottom = new_shape[1] - top
+    cropped_image = resized_image.crop((left, top, right, bottom))
+    
+    if out_path:
+        cropped_image.save(out_path)
+    else:
+        return cropped_image
         
 
 def applyPhaseScram(image, coherence = 0.0, rndphi = None, mask = None):
@@ -573,7 +577,7 @@ def overlayFixation(image, lum = 255, offset = 8, arm_length = 12, arm_width = 2
     offset : int, optional
         Distance from center of the image to the nearest pixel of each arm
     arm_length : int, optional
-        Length of each arm of fixation cross, specified in pixels
+        _length of each arm of fixation cross, specified in pixels
     arm_width : int, optional
         Thickness of each arm of fixation cross, specified in pixels (should be
         even number)
@@ -665,15 +669,15 @@ def plotAverageAmpSpec(indir, ext = 'png', nSegs = 1, dpi = 96, cmap = 'jet'):
         raise IOError('No images found! Check directory and extension')
 
     # Determine image dimensions from first image
-    tmp = scipy.misc.imread(infiles[0], flatten = True)
-    L, W = tmp.shape
+    tmp = Image.open(infiles[0])
+    L, W = tmp.size
     del(tmp)
 
     # Work out if we can segment image evenly, and dims of windows if we can
     if L % nSegs or W % nSegs:
         raise IOError('Image dimensions (%d, %d) must be divisible by nSegs (%d)' %(L, W, nSegs))
-    segL = L / nSegs
-    segW = W / nSegs
+    segL = L // nSegs
+    segW = W // nSegs
 
     # Pre-allocate array for storing spectra
     spectra = np.empty([len(infiles), L, W], dtype = float)
@@ -685,7 +689,7 @@ def plotAverageAmpSpec(indir, ext = 'png', nSegs = 1, dpi = 96, cmap = 'jet'):
         print('\t%s' %infile)
 
         # Read in, grayscale (flatten) if RGB
-        im = scipy.misc.imread(infile, flatten = True)
+        im = np.array(Image.open(infile).convert('L'))
 
         # Calculate amplitude spectrum for current window
         for y in range(0, L, segL):
@@ -742,7 +746,7 @@ def plotAverageAmpSpec(indir, ext = 'png', nSegs = 1, dpi = 96, cmap = 'jet'):
 
 
 ##### CLASS DEFINITIONS #####
-class fourierFilter():
+class FourierFilter():
     """
     Class provides functions for full pipeline of filtering images in Fourier
     domain by either spatial frequency or orientation.
@@ -772,8 +776,11 @@ class fourierFilter():
 
     def __init__(self, im):
         # Read image
-        self.im = _imread(im)
-        self.imdims = self.im.shape
+        if type(im) is list:
+        	self.imdims = im
+        else:
+        	self.im = _imread(im)
+        	self.imdims = self.im.shape
 
     def makeFrequencyFilter(self, fwhm, mu = 0.0, invert = False):
         """
@@ -795,7 +802,7 @@ class fourierFilter():
             Requested filter as numpy array.
 
         """
-        L,W,D = self.imdims
+        L,W = self.imdims[:2]
 
         # Create spatial frequency map
         X = _plotfftinfo([L,W])['sf']
@@ -840,7 +847,7 @@ class fourierFilter():
             Requested filter as numpy array.
 
         """
-        L,W,D = self.imdims
+        L,W = self.imdims[:2]
 
         # Create orientation map
         X = _plotfftinfo([L,W])['ori']
@@ -903,10 +910,12 @@ class fourierFilter():
 
         """
         im = self.im
+        if len(im.shape) == 2:
+            im = im[:,:,np.newaxis]
         L,W,D = self.imdims
 
         # Pre-allocate filtered image
-        filtim = np.empty([L,W,D], dtype = float)
+        filtim = np.empty_like(im, dtype = float)
 
         # Loop over colour channels (will execute only once if D == 1)
         for i in range(D):

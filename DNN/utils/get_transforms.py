@@ -1,10 +1,10 @@
 import torch.nn
-import torchvision.transforms as transforms
+import torchvision.transforms.v2 as transforms
 import sys
 import os
 import shutil
 from types import SimpleNamespace
-from .Occlude import Occlude
+from Occlude import Occlude
 
 
 class MultipleViews:
@@ -21,28 +21,33 @@ class MultipleViews:
 
 def get_transforms(D=SimpleNamespace()):
 
+    imsize = D.imsize if hasattr(D, 'imsize') else 224
+
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
                                      
     # default transforms
     transforms_train = [
-        transforms.ToTensor(),
-        transforms.RandomResizedCrop(224, antialias=True),
+        transforms.ToImage(), 
+        transforms.ToDtype(torch.float32, scale=True),
+        transforms.RandomResizedCrop(imsize, antialias=True),
         transforms.RandomHorizontalFlip(),
         normalize,
     ]
     transforms_val = [
-        transforms.ToTensor(),
-        transforms.Resize(224, antialias=True),
-        transforms.CenterCrop(224),
+        transforms.ToImage(), 
+        transforms.ToDtype(torch.float32, scale=True),
+        transforms.Resize(imsize, antialias=True),
+        transforms.CenterCrop(imsize),
         normalize,
     ]
 
     # contrastive learning transform
     if hasattr(D, 'transform_type') and D.transform_type == 'contrastive':
         transforms_train = [
-            transforms.ToTensor(),
-            transforms.RandomResizedCrop(224, scale=(0.8,1.0), antialias=True),
+            transforms.ToImage(), 
+            transforms.ToDtype(torch.float32, scale=True),
+            transforms.RandomResizedCrop(imsize, scale=(0.8,1.0), antialias=True),
             transforms.RandomHorizontalFlip(),
             transforms.RandomApply([transforms.ColorJitter(
                 brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)],
@@ -55,8 +60,8 @@ def get_transforms(D=SimpleNamespace()):
 
     # add occlusion
     if hasattr(D, 'Occlusion'):
-        transforms_train.insert(3, Occlude(D))
-        transforms_val.insert(3, Occlude(D))
+        transforms_train.insert(4, Occlude(D))
+        transforms_val.insert(4, Occlude(D))
 
     # compose transforms
     transform_train = transforms.Compose(transforms_train)

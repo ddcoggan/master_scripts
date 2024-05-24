@@ -20,13 +20,13 @@ import pandas as pd
 # resolve = 'orig' to merge newly specified and original configs, with conflicts resolved in favour of orig
 # unless resolve == 'resume', ['checkpoint', 'num_epochs', 'batch_size'] are ALWAYS overwritten by values in new config
 
-def complete_config(CFG, model_dir=None, resolve='new'):
+def complete_config(CFG, model_dir=None, resolve='new', training=True):
 
     if model_dir is None:
         if hasattr(CFG.M, 'model_dir'):
             model_dir = CFG.M.model_dir
         else:
-            model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/models/{CFG.M.model_name}/{CFG.M.identifier}')
+            model_dir = op.expanduser(f'~/david/models/{CFG.M.model_name}/{CFG.M.identifier}')
 
     # sub model dir if transfer learning
     if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
@@ -105,9 +105,10 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             num_epochs = 100,
             classification=True,
             contrastive = False,
-            supervised_contrastive = False,
+            contrastive_supervised = False,
             optimizer_name = 'SGD',
             momentum = 0.9,
+            gamma=0.1,
             weight_decay = 1e-4,
             scheduler = 'StepLR',
             step_size = 30,
@@ -130,8 +131,6 @@ def complete_config(CFG, model_dir=None, resolve='new'):
         else:
             T.checkpoint = -1
 
-
-
     # determine whether model has finished training
     epoch_stats_path = f'{model_dir}/epoch_stats.csv'
     if op.isfile(epoch_stats_path):
@@ -150,54 +149,44 @@ def complete_config(CFG, model_dir=None, resolve='new'):
             import warnings
             warnings.simplefilter("ignore")
 
-        # only load model if necessary for determining params
-        load_model = not hasattr(T, 'batch_size') or not hasattr(T, 'learning_rate')
-        if load_model:
+        # loading model necessary for hyperparameter calculation
+        def load_model(M, D, T):
 
             # configure hardware
             device = torch.device('cuda') if torch.cuda.device_count() else torch.device('cpu')
             
             # load model
             from utils import get_model
-            model = get_model(M)
+            model = get_model(M.model_name)
 
             # adapt output size of model based on number of classes in dataset
             num_classes = len(glob.glob(f'{op.expanduser("~")}/Datasets/{D.dataset}/train/*'))
             if num_classes != 1000 and T.classification:
                 from utils import change_output_size
                 model = change_output_size(model, M, num_classes)
-        else:
-            model = None
+            
+            return model, device
 
         # calculate optimal batch size
         if not hasattr(T, 'batch_size'):
             from utils import calculate_batch_size
+            model, device = load_model(M, D, T)
             T = calculate_batch_size(model, T, T.device)
             print(f'optimal batch size calculated at {T.batch_size}')
 
         # calculate optimal learning rate
-        if type(T.learning_rate) == str:
+        if training and type(T.learning_rate) == str:
+            model, device = load_model(M, D, T)
             if T.learning_rate == 'batch_nonlinear':
                 T.learning_rate = 2**-7 * np.sqrt(T.batch_size/2**5)
             elif T.learning_rate == 'batch_linear':
                 T.learning_rate = T.batch_size / 2**5
             elif T.learning_rate == 'LRfinder':
-                from ignite.handlers import FastaiLRFinder
-                from ignite.engine import create_supervised_trainer
-                from utils import get_loaders, get_optimizer, get_criteria
-                loader_train, _ = get_loaders(D, T, 4)
-                lr_finder = FastaiLRFinder()
-                optimizer = get_optimizer(model, T)
-                criterion = get_criteria(T).items()[0]
-                trainer = create_supervised_trainer(
-                    model, optimizer, criterion, device=device)
-                with lr_finder.attach(trainer, end_lr=0.1) as finder:
-                    finder.run(train_loader)
-                    T.learning_rate = lr_finder.suggestion()
-            print(f'initial learning rate calculated at {T.learning_rate}')
+                from utils import find_lr
+                T.learning_rate = find_lr(model, device, D, T)
 
     # repack config
     CFG = SimpleNamespace(M=M, D=D, T=T)
 
-    return CFG, model
+    return CFG
 

@@ -14,14 +14,17 @@ def load_params(params, dst_object, object_type, modules='all'):
 		'scheduler': ['scheduler'],
 		'swa_scheduler': ['swa_scheduler']}
 
-	state_dict_found = False
-	for key in key_config[object_type]:
-		if key in params:
-			src_params = params[key]
-			state_dict_found = True
-			break
-	assert state_dict_found, \
-		f'No state dict found in params file, searched for {key_config[object_type]}'
+	if sum(['weight' in key for key in params.keys()]):
+		src_params = params
+	else:
+		state_dict_found = False
+		for key in key_config[object_type]:
+			if key in params:
+				src_params = params[key]
+				state_dict_found = True
+				break
+		assert state_dict_found, (f'No state dict found in params file, '
+								  f'searched for {key_config[object_type]}')
 
 
 	# resolve key errors arising when 'module.' is prefixed to either the source or dest keys
@@ -40,10 +43,13 @@ def load_params(params, dst_object, object_type, modules='all'):
 		if set(dst_keys) != set(src_keys):
 			for dst_key in dst_keys:
 				if dst_key not in src_keys:
+					UserWarning(f'no weights for layer {dst_key} found in '
+								f'params file, original weights will be kept')
 					src_params[dst_key] = dst_object.state_dict()[dst_key]
 		dst_object.load_state_dict(src_params)
 
-	# load subset of params e.g. for transfer learning or partially matching architectures
+	# load subset of params e.g. for transfer learning or partially 
+	# matching architectures
 	else:
 		for module in modules:
 

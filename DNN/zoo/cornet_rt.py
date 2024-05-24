@@ -112,4 +112,5 @@ class CORnet_RT(nn.Module):
             outputs = new_outputs
 
         out = self.decoder(outputs['IT'])
+        del states
         return out

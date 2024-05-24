@@ -6,7 +6,7 @@ import sys
 import glob
 import shutil
 
-def run_NORDIC(subjects):
+def run_NORDIC(subjects, noise_vol=True):
 
     for subject in subjects:
         for s, session in enumerate(subjects[subject]):
@@ -46,9 +46,12 @@ def run_NORDIC(subjects):
                 outpath = f'{outdir}/{os.path.basename(mag)}'
                 if not len(glob.glob(f'{outpath}*')):
                     print('running NORDIC preprocessing...')
-                    arg = {'noise_volume_last': 1,
-                           'phase_filter_width': 10.,  # must be a float
-                           'use_magn_for_gfactor': 1}  # WARNING: to disable, remove key from dict, do not set to zero (see script)
+                    arg = {'phase_filter_width': 10.}  # float. Default = 10.
+                    if noise_vol:
+                        arg['noise_volume_last'] = 1  # 1 = last, 0 = no noise
+                        arg['use_magn_for_gfactor'] = 1  # remove key to disable
+                    else:
+                        arg['noise_volume_last'] = 0
                     eng = matlab.engine.start_matlab()
                     eng.addpath('/home/tonglab/david/repos/NORDIC_Raw')
                     eng.NIFTI_NORDIC(mag, phase, outpath, arg, nargout=0)
@@ -58,7 +61,7 @@ def run_NORDIC(subjects):
                     num_func_vols = int(os.popen(f'fslnvols {mag}').read()[0:-1])
                     print(f'trimming noise volume from preprocessed timeseries...')
                     os.system(f'fslroi {outpath} {outpath} 0 {num_func_vols - 1}')
-                    shutil.delete(f'{outpath}.nii')
+                    os.remove(f'{outpath}.nii')
                     os.system(f'fslmerge -tr {outpath} {outpath} 4.217')
 
             # copy json files
@@ -69,8 +72,8 @@ def run_NORDIC(subjects):
                     shutil.copy(json_path, f"derivatives/NORDIC/{json_path}")
 
             # make links to anat and fmap data
-            otherdirs = glob.glob(f"sub-{subject}/ses-{s + 1}/*")
-            otherdirs.remove(funcdir)
+            otherdirs = glob.glob(f"sub-{subject}/ses-{s + 1}/anat")
+            otherdirs += glob.glob(f"sub-{subject}/ses-{s + 1}/fmap")
             for otherdir in otherdirs:
                 outdir = f"derivatives/NORDIC/{otherdir}"
                 if not op.exists(outdir):

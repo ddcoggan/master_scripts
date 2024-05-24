@@ -72,17 +72,12 @@ class CORblock_RT(nn.Module):
 
 class CORnet_RT(nn.Module):
     
-    def __init__(self, hw=3, num_cycles=5, return_states=False,
-                 return_blocks=None, return_cycles=None):
+    def __init__(self, hw=3, num_cycles=5):
         super().__init__()
 
         # parameters
-        self.blocks = ['V1', 'V2', 'V4', 'IT', 'decoder']
+        self.blocks = ['V1', 'V2', 'V4', 'IT']
         self.num_cycles = num_cycles
-        self.return_states = return_states
-        self.return_blocks = self.blocks if not return_blocks else return_blocks
-        self.return_cycles = torch.arange(num_cycles) if not return_cycles \
-            else return_cycles
 
         # architecture
         self.V1 = CORblock_RT(3, 64, kernel_size=7, stride=4, out_shape=56)
@@ -101,101 +96,36 @@ class CORnet_RT(nn.Module):
         num_cycles = inp.shape[0] if len(inp.shape) == 5 else self.num_cycles
 
         # initialize block states
-        stored_cycles = num_cycles if self.return_states else 1
-        states = {block: {f'cyc{cycle:02}': 0} for cycle in torch.arange(
-            stored_cycles) for block in self.blocks}
+        states = {block: 0 for block in self.blocks + ['output']}
 
         for c in range(num_cycles):
             
             # if image, reinput at each cycle; if movie, input frame sequence
             inp_c = inp if len(inp.shape) == 4 else inp[c]
             
-            # if returning states, get previous and current cycles
-            if self.return_states:
-                prv_cyc, cur_cyc = f'cyc{c-1:02}', f'cyc{c:02}'
-            # otherwise, only current cycle is stored
-            else:   
-                prv_cyc, cur_cyc = f'cyc00', f'cyc00'
-            
-            for b, block in enumerate(self.blocks[:-1]):
+            for b, block in enumerate(self.blocks):
 
                 prv_block = ([None] + self.blocks)[b]
 
-                # get feedforward inputs from inp or prev block, current cycle
-                f = inp_c if block == 'V1' else states[prv_block][cur_cyc]
+                # get feedforward inputs from inp or prev block
+                f = inp_c if block == 'V1' else states[prv_block]
 
-                # get lateral inputs from current block, previous cycle
-                l = states[block][prv_cyc] if c > 0 else None
+                # get lateral inputs from current block
+                l = states[block] if c > 0 else None
 
                 # forward pass
                 outputs = getattr(self, block)(f, l)
 
                 # store outputs
-                states[block][cur_cyc] = outputs[1]
-            
-            # store decoder states for each cycle
-            if self.return_states and 'decoder' in self.return_blocks:
-                states['decoder'][cur_cyc] = self.decoder(outputs[0])
+                states[block] = outputs[1]
 
-        if self.return_states:
-            # return only requested cycles and blocks
-            states = {block: {f'cyc{cycle:02}': states[block][f'cyc{cycle:02}']
-                for cycle in self.return_cycles} 
-                for block in self.return_blocks}
                 
-            return states
-        else:
-            # delete states to free memory and return decoder outputs
-            del states
-            return self.decoder(outputs[0])
-
-    """
-    # version that iteratively yields outputs 
-    def forward(self, inp):
-
-        cycles = inp.shape[0] if len(inp.shape) == 5 else self.cycles
-
-        # initialize block states
-        blocks = ['V1', 'V2', 'V4', 'IT']
-        states = {block: [0] for block in blocks}
-        if self.return_states:
-            states['decoder'] = None
-
-        for c in range(cycles):
-
-            # if image, reinput at each cycle; if movie, input frame sequence
-            inp_c = inp if len(inp.shape) == 4 else inp[c]
-
-            for blk in blocks:
-                prv_blk = blocks[
-                    blocks.index(blk) - 1] if blk != 'V1' else None
-
-                # get feedforward inputs from inp or prev block, current cycle
-                f = inp_c if blk == 'V1' else states[prv_blk]
-
-                # get lateral inputs from current block, previous cycle
-                l = states[blk] if c > 0 else None
-
-                # forward pass
-                inputs = [f, l]
-                outputs = getattr(self, blk)(*inputs)
-
-                # store outputs
-                states[blk] = outputs[1]
-
-            # return states for each cycle
-            if self.return_states:
-                states['decoder'] = self.decoder(outputs[0])
-                yield c, states
-
-        # if not self.return_states:
-        del states
         return self.decoder(outputs[0])
-    """
+
 
 if __name__ == "__main__":
 
-    model = CORnet_RT(return_states=True)
+    model = CORnet_RT()
     params = torch.load('/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models/cornet_rt_hw3/transform-contrastive/params/best.pt')
     model.load_state_dict(params['model'])
     inputs = torch.rand([5, 3, 224, 224])

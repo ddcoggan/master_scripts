@@ -26,7 +26,7 @@ def get_scheduler(optimizer, T):
 
     if T.scheduler == 'StepLR':
         scheduler = optim.lr_scheduler.StepLR(
-            optimizer, step_size=T.step_size, last_epoch=T.checkpoint)
+            optimizer, step_size=T.step_size, last_epoch=T.checkpoint, gamma=T.gamma)
     if T.scheduler == 'ReduceLROnPlateau':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, 'min', patience=T.patience)
