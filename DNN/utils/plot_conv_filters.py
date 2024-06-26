@@ -61,7 +61,7 @@ def plot_conv_filters(layer=None, params_path=None, outpath='filters.png',
 
 if __name__ == "__main__":
 	params_path = (f'/home/tonglab/david/models'
-                 f'/cornet_s_V1_v6/xform-cont/params/best_043.pt')
+                 f'/cognet_v11/xform-cont/params/015.pt')
 	plot_conv_filters('module.V1.conv.weight', params_path,
                       f'{op.dirname(op.dirname(params_path))}/'
                       f'kernel_plots/{op.basename(params_path)[:-3]}.png')

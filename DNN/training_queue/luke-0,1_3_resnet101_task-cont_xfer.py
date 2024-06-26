@@ -12,14 +12,14 @@ M = SimpleNamespace(
 
     # mandatory
     model_name = 'resnet101',
-    identifier = 'occ-nat_tex-nat_xform-cont',
+    identifier = 'task-cont',
     #model_dir = op.expanduser('~/david/projects/p022_occlusion/models/cornet_s_V1/v2_occ-beh'),
 
     # optional
     save_interval = 8,  # preserve params at every n epochs
-    #transfer = True,
-    #transfer_dir = 'transfer_unocc_bn-reset',
-    #freeze_layers = ['V1', 'V2', 'V4','IT'],
+    transfer = True,
+    transfer_dir = 'transfer_unocc',
+    freeze_layers = ['features'],
     #reinitialize_layers = ['decoder'],
     # return_model = False,  # return model object to environment after training
     # init_params = ['contrastive_random_occluder', 32],   # starting params model and epoch (e.g. when starting transfer learning)
@@ -46,21 +46,21 @@ M.head_depth = 1  # multi-layer head, default = 1
 # dataset
 D = SimpleNamespace(
     dataset = 'ILSVRC2012',
-    # num_views = 3,  # number of views to generate per example
+    #num_views = 2,  # number of views to generate per example
     # views_altered = [0,1,1],  # views to apply alterations to
     transform_type = 'contrastive'  # 'contrastive' or 'standard'
 )
-
+"""
 occluders_behavioural = ['barHorz04', 'barVert04', 'barObl04', 'mudSplash', 'polkadot', 'polkasquare',
                          'crossBarOblique', 'crossBarCardinal', 'naturalUntexturedCropped2']
 visibilities = [.1, .2, .4, .6, .8]
 D.Occlusion = SimpleNamespace(
-    type = 'naturalUntexturedCropped',                     # occluder type or list thereof
+    type = occluders_behavioural,                     # occluder type or list thereof
     prop_occluded = .8,                                 # proportion of images to be occluded
     visibility = [.1, .2, .4, .6, .8],                          # image visibility or list thereof, range(0,1)
     colour = 'random'      # occluder colours (unless naturalTextured type)
 )
-
+"""
 
 # training
 T = SimpleNamespace(
@@ -76,8 +76,8 @@ T = SimpleNamespace(
     #patience = 12,
     step_size = 30,
     #num_workers = 14,
-    #classification = True,
-    #contrastive = False,
+    classification = True,
+    contrastive = False,
     #contrastive_supervised = False,
     #checkpoint = None,  # resume training from this epoch (set to None or don't set to use most recent)
     #views_class = [1],  # views to apply classification loss
@@ -91,6 +91,7 @@ T = SimpleNamespace(
     #cutmix_alpha = 1,
     #cutmix_beta = 1,
     #cutmix_frgrnd = True,
+    AMP=False
 )
 
 CFG = SimpleNamespace(M=M,D=D,T=T)

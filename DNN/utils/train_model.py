@@ -174,21 +174,13 @@ def train_model(CFG, model=None, verbose=False):
             for batch, (inputs, targets) in enumerate(tepoch):
 
 
-                tepoch.set_description(f'{now()} | {train_eval.zfill(5)} | epoch'
+                tepoch.set_description(f'{now()} | {train_eval.ljust(5)} | epoch'
                                        f' {epoch}/{T.num_epochs}')
 
-                # apply cutmix
-                if T.cutmix:
-                    apply_cutmix = np.random.rand(1) < T.cutmix_prob
-                    if apply_cutmix:
-                        inputs, trg_frgrnd, lam, = cutmix(inputs,
-                                                          targets, T)
-                    targets = trg_frgrnd if T.cutmix_frgrnd else targets
-
                 # save some input images after one successful batch
-                if epoch == 0 and batch == 32:
+                if epoch == 1 and batch == 32:
                     save_image_custom(
-                        inputs, f'{M.model_dir}/sample_training_inputs')
+                        inputs, f'{M.model_dir}/sample_{train_eval}_inputs')
 
                 # concatenate multiple views along image dimension
                 if D.num_views > 1:
@@ -243,12 +235,11 @@ def train_model(CFG, model=None, verbose=False):
                     postfix_string += (
                         f"{metric}={epoch_tracker[metric].val:.4f}"
                         f"({epoch_tracker[metric].avg:.4f}) ")
-                lr_string = (f'lr={optimizer.param_groups[0]["lr"]:.5f}' if
-                    train_eval == 'train' else '')
-                tepoch.set_postfix_str(postfix_string + lr_string)
+                lr = optimizer.param_groups[0]["lr"] if train_eval == 'train' else 0
+                tepoch.set_postfix_str(postfix_string + f'lr={lr:.5f}')
 
                 # update model
-                if train_eval == 'train' and epoch > 0:
+                if train_eval == 'train':
                     if not (T.classification and T.contrastive):
                         loss = loss_class if T.classification else loss_contr
                     else:
@@ -267,7 +258,7 @@ def train_model(CFG, model=None, verbose=False):
 
         # add performance for this epoch
         new_stats = {'time': [now()], 'epoch': [epoch],
-                     'train_eval': [train_eval], 'lr': [current_lr]}
+                     'train_eval': [train_eval], 'lr': [lr]}
         new_stats = {**new_stats,
                      **{key: np.array(value.avg, dtype="float16")
                         for key, value in (epoch_tracker.items())}}
@@ -284,7 +275,7 @@ def train_model(CFG, model=None, verbose=False):
 
 
     # train / eval loop
-    for epoch in list(range(max(0, T.checkpoint), T.num_epochs)):
+    for epoch in list(range(max(1, T.checkpoint), T.num_epochs+1)):
 
         # train
         model.train()

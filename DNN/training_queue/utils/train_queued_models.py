@@ -16,11 +16,6 @@ GPUs = input(f'Which GPU(s) has this training job been assigned to?\n'
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'  # converts to nvidia-smi order
 os.environ['CUDA_VISIBLE_DEVICES'] = GPUs
 
-# import torch or functions that depend on torch AFTER setting cuda visibility
-sys.path.append(op.expanduser('~/david/master_scripts'))
-from DNN.utils import complete_config
-sys.path.remove(op.expanduser('~/david/master_scripts'))
-
 # machines
 machines = ['finn','rey','padme','leia','solo','luke','yoda']
 machine = socket.gethostname()
@@ -52,9 +47,14 @@ while configs:
         shutil.move(config, claimed_config)
         config = claimed_config
 
-    # load config, fill in defaults
+    # load config, get model directory
     CFG = __import__(config[:-3], fromlist=['']).CFG
-    CFG = complete_config(CFG, resolve='new')
+    if not hasattr(CFG.M, 'model_dir'):
+        CFG.M.model_dir = op.expanduser(
+            f'~/david/models/{CFG.M.model_name}/{CFG.M.identifier}')
+    if (hasattr(CFG.M, 'transfer') and CFG.M.transfer and not
+            CFG.M.model_dir.endswith(CFG.M.transfer_dir)): # transfer learning
+        CFG.M.model_dir += f'/{CFG.M.transfer_dir}'
 
     # make a copy of training utils in model directory for reproducibility
     os.makedirs(CFG.M.model_dir, exist_ok=True)
@@ -64,13 +64,18 @@ while configs:
             op.expanduser('~/david/master_scripts/DNN/utils'), utils_dir)
     sys.path.append(utils_dir)
 
+    # calculate / set missing values in config
+    from complete_config import complete_config
+    CFG = complete_config(CFG, resolve='new')
+
+    # train model
     from train_model import train_model
     train_model(CFG, verbose=True)
 
     # clean up after training
     shutil.copy(config, f'{CFG.M.model_dir}/config.py')
     shutil.move(config, f'done/{config}')
-    del CFG
+    del CFG, complete_config, train_model
 
     # refresh model configs
     configs = find_configs(machine, GPUs)

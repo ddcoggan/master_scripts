@@ -17,7 +17,7 @@ visibilities = [.1, .2, .4, .6, .8]
 # model
 M = SimpleNamespace(
     model_name = 'cornet_s_custom',
-    identifier = 'hd-2_hw-3_V1f-128_occ-nat-untex_task-cont',  # used to name model directory, required
+    identifier = 'hd-2_hw-3_V1f-128_occ-nat-untex-strong_task-cont',  # used to name model directory, required
     save_interval = 4,  # preserve params at every n epochs
     #transfer = True,
     #transfer_dir = 'transfer_occ-nat_task-cont',
@@ -52,8 +52,8 @@ D = SimpleNamespace(
 
 D.Occlusion = SimpleNamespace(
     type = 'naturalUntexturedCropped',                     # occluder type or list thereof
-    prop_occluded = .8,                                 # proportion of images to be occluded
-    visibility = [.6,.7,.8,.9],                          # image visibility or list thereof, range(0,1)
+    prop_occluded = 5/6,                                 # proportion of images to be occluded
+    visibility = [.1,.2,.4,.6,.8],                          # image visibility or list thereof, range(0,1)
     colour = 'random'      # occluder colours (unless naturalTextured type)
 )
 
@@ -76,6 +76,7 @@ T = SimpleNamespace(
     contrastive_supervised = False,
     checkpoint = None,  # resume training from this epoch (set to None or don't set to use most recent)
     #overwrite_optimizer = False,
+    AMP=False
 )
 
 CFG = SimpleNamespace(M=M,D=D,T=T)

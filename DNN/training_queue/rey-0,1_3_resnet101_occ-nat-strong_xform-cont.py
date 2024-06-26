@@ -12,7 +12,7 @@ M = SimpleNamespace(
 
     # mandatory
     model_name = 'resnet101',
-    identifier = 'occ-nat_tex-nat_task-cont',
+    identifier = 'occ-nat-strong_xform-cont',
     #model_dir = op.expanduser('~/david/projects/p022_occlusion/models/cornet_s_V1/v2_occ-beh'),
 
     # optional
@@ -25,7 +25,6 @@ M = SimpleNamespace(
     # init_params = ['contrastive_random_occluder', 32],   # starting params model and epoch (e.g. when starting transfer learning)
     # params_path = '/home/tonglab/david/masterScripts/DNN/zoo/pretrained_weights/cornet_s-1d3f7974.pth',
 )
-
 """
 # cornet_s_custom parameters
 M.R = (1,2,4,2)                           # recurrence, default = (1,2,4,2),
@@ -47,12 +46,13 @@ M.head_depth = 1  # multi-layer head, default = 1
 # dataset
 D = SimpleNamespace(
     dataset = 'ILSVRC2012',
-    num_views = 2,  # number of views to generate per example
-    views_altered = [0],  # views to apply alterations to
+    # num_views = 3,  # number of views to generate per example
+    # views_altered = [0,1,1],  # views to apply alterations to
     transform_type = 'contrastive'  # 'contrastive' or 'standard'
 )
 
-
+occluders_behavioural = ['barHorz04', 'barVert04', 'barObl04', 'mudSplash', 'polkadot', 'polkasquare',
+                         'crossBarOblique', 'crossBarCardinal', 'naturalUntexturedCropped2']
 visibilities = [.1, .2, .4, .6, .8]
 D.Occlusion = SimpleNamespace(
     type = 'naturalTexturedCropped',                     # occluder type or list thereof
@@ -76,8 +76,8 @@ T = SimpleNamespace(
     #patience = 12,
     step_size = 30,
     #num_workers = 14,
-    classification = False,
-    contrastive = True,
+    #classification = True,
+    #contrastive = False,
     #contrastive_supervised = False,
     #checkpoint = None,  # resume training from this epoch (set to None or don't set to use most recent)
     #views_class = [1],  # views to apply classification loss
@@ -91,7 +91,6 @@ T = SimpleNamespace(
     #cutmix_alpha = 1,
     #cutmix_beta = 1,
     #cutmix_frgrnd = True,
-    AMP=False,
 )
 
 CFG = SimpleNamespace(M=M,D=D,T=T)

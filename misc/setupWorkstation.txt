@@ -17,7 +17,7 @@ ssh-add ~/.ssh/id_ed25519
 sudo apt install wget build-essential libncursesw5-dev libssl-dev \
 libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev
 sudo add-apt-repository ppa:deadsnakes/ppa
-sudo apt install python3.7 python3.8 python3.9 python3.10 python3.11 python3.12
+sudo apt install python3.7 python3.7-distutils python3.8 python3.8-distutils python3.9 python3.9-distutils python3.10 python3.10-distutils python3.11 python3.11-distutils python3.12
 
 5. install gcc and cuda (see instructions at https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
 # these are the instructions as of 23-06-01

@@ -36,6 +36,8 @@ from .cognet.cognet_v9 import CogNet as cognet_v9
 from .cognet.cognet_v10 import CogNet as cognet_v10
 from .cognet.cognet_v11 import CogNet as cognet_v11
 from .cognet.cognet_v12 import CogNet as cognet_v12
+from .cognet.cognet_v13 import CogNet as cognet_v13
+from .cognet.cognet_v14 import CogNet as cognet_v14
 from .GaborFilterBank import GaborFilterBank
 from .alexnet_V1 import AlexNet as alexnet_V1
 #from . import segmentation

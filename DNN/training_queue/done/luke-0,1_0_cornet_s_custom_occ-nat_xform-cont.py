@@ -17,7 +17,7 @@ visibilities = [.1, .2, .4, .6, .8]
 # model
 M = SimpleNamespace(
     model_name = 'cornet_s_custom',
-    identifier = 'hd-2_hw-3_V1f-128_occ-art-strong_xform-cont',  # used to name model directory, required
+    identifier = 'hd-2_hw-3_V1f-128_occ-nat-strong_xform-cont',  # used to name model directory, required
     save_interval = 4,  # preserve params at every n epochs
     #transfer = True,
     #transfer_dir = 'transfer_occ-nat_task-cont',
@@ -51,8 +51,8 @@ D = SimpleNamespace(
 )
 
 D.Occlusion = SimpleNamespace(
-    type = ['barAll04', 'crossBarAll', 'mudSplash', 'polkadot', 'polkasquare'],                    # occluder type or list thereof
-    prop_occluded = .8,                                 # proportion of images to be occluded
+    type = 'naturalTexturedCropped',                    # occluder type or list thereof
+    prop_occluded = 5/6,                                 # proportion of images to be occluded
     visibility = [.1,.2,.4,.6,.8],                          # image visibility or list thereof, range(0,1)
     colour = 'random'      # occluder colours (unless naturalTextured type)
 )
@@ -76,8 +76,21 @@ T = SimpleNamespace(
     contrastive_supervised = False,
     checkpoint = None,  # resume training from this epoch (set to None or don't set to use most recent)
     #overwrite_optimizer = False,
-    AMP=False
 )
 
 CFG = SimpleNamespace(M=M,D=D,T=T)
 
+if __name__ == "__main__":
+
+    # complete configuration
+
+    # output directory
+    if not hasattr(CFG.M, 'model_dir'):
+        CFG.M.model_dir = op.expanduser(f'~/david/projects/p022_occlusion/in_silico/models/{CFG.M.model_name}/{CFG.M.identifier}')
+
+
+    import sys
+    sys.path.append(op.expanduser('~/david/master_scripts/DNN/utils'))
+
+    from train_model import train_model
+    train_model(CFG)

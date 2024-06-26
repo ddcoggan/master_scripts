@@ -20,22 +20,10 @@ import pandas as pd
 # resolve = 'orig' to merge newly specified and original configs, with conflicts resolved in favour of orig
 # unless resolve == 'resume', ['checkpoint', 'num_epochs', 'batch_size'] are ALWAYS overwritten by values in new config
 
-def complete_config(CFG, model_dir=None, resolve='new', training=True):
-
-    if model_dir is None:
-        if hasattr(CFG.M, 'model_dir'):
-            model_dir = CFG.M.model_dir
-        else:
-            model_dir = op.expanduser(f'~/david/models/{CFG.M.model_name}/{CFG.M.identifier}')
-
-    # sub model dir if transfer learning
-    if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
-        model_dir = f'{model_dir}/{CFG.M.transfer_dir}'
-
-    CFG.M.model_dir = model_dir
+def complete_config(CFG, resolve='new', training=True):
 
     # look for previous configs
-    config_file = f"{model_dir}/config.pkl"
+    config_file = f"{CFG.M.model_dir}/config.pkl"
     orig_config_exists = op.isfile(config_file)  # default
     if orig_config_exists:
         CFG_orig = pkl.load(open(config_file, 'rb'))
@@ -44,17 +32,17 @@ def complete_config(CFG, model_dir=None, resolve='new', training=True):
     if not orig_config_exists:
         if hasattr(CFG.M, 'transfer') and CFG.M.transfer:
             if not hasattr(CFG.M, 'starting_params'):
-                CFG.M.starting_params = sorted(glob.glob(f'{op.dirname(model_dir)}/params/*.pt'))[-1]
+                CFG.M.starting_params = sorted(glob.glob(f'{op.dirname(CFG.M.model_dir)}/params/*.pt'))[-1]
             print(f'Transfer learning regime initiated using params at {CFG.M.starting_params}')
         else:
-            print(f'Starting training of new model at {model_dir}')
+            print(f'Starting training of new model at {CFG.M.model_dir}')
 
     elif resolve == 'resume':
-        print(f'Resuming training of model at {model_dir} with no config changes')
+        print(f'Resuming training of model at {CFG.M.model_dir} with no config changes')
         assert orig_config_exists
         CFG = CFG_orig
     else:
-        print(f'Resuming training of model at {model_dir} with potential config changes.\n'
+        print(f'Resuming training of model at {CFG.M.model_dir} with potential config changes.\n'
               f'Conflicts between original and new configs resolved in favour of {resolve}.')
 
         # force overwrite for certain parameters
@@ -99,7 +87,8 @@ def complete_config(CFG, model_dir=None, resolve='new', training=True):
         D = SimpleNamespace(
             dataset='ILSVRC2012',
             num_views = 1,
-            transform_type = 'default'
+            transform_type = 'default',
+            image_size = 224
         ),
         T = SimpleNamespace(
             num_epochs = 100,
@@ -124,7 +113,7 @@ def complete_config(CFG, model_dir=None, resolve='new', training=True):
 
     # calculate last epoch if not set or resuming training with no changes
     if not hasattr(T, 'checkpoint') or T.checkpoint in [None, -1] or resolve == 'resume':
-        params_paths = sorted(glob.glob(f"{M.model_dir}/params/???.pt"))
+        params_paths = sorted(glob.glob(f"{CFG.M.model_dir}/params/???.pt"))
         if params_paths:
             print(f'Most recent params found at {params_paths[-1]}')
             T.checkpoint = int(os.path.basename(params_paths[-1])[:-3])
@@ -132,7 +121,7 @@ def complete_config(CFG, model_dir=None, resolve='new', training=True):
             T.checkpoint = -1
 
     # determine whether model has finished training
-    epoch_stats_path = f'{model_dir}/epoch_stats.csv'
+    epoch_stats_path = f'{CFG.M.model_dir}/epoch_stats.csv'
     if op.isfile(epoch_stats_path):
         epoch_stats = pd.read_csv(open(epoch_stats_path, 'r+'))
         do_training = len(epoch_stats) < (T.num_epochs+1)*2

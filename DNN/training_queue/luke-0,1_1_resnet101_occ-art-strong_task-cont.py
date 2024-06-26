@@ -12,7 +12,7 @@ M = SimpleNamespace(
 
     # mandatory
     model_name = 'resnet101',
-    identifier = 'occ-art_task-cont',
+    identifier = 'occ-art-strong_task-cont',
     #model_dir = op.expanduser('~/david/projects/p022_occlusion/models/cornet_s_V1/v2_occ-beh'),
 
     # optional

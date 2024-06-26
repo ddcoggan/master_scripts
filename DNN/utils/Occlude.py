@@ -23,9 +23,10 @@ class Occlude:
 
         # transform for occluder only
         self.occluder_transform = transforms.Compose([
+            transforms.Resize(D.image_size, Image.NEAREST),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(224)])
+            transforms.RandomCrop(D.image_size)])
 
         # ensure occluders and visibilities are lists
         occ_types = [O.type] if isinstance(O.type, str) else O.type
@@ -66,7 +67,7 @@ class Occlude:
         else:
             tensor_paths = [f'{occ_dir}/occluders.pt' for occ_dir in occ_dirs]
             textured = ['Textured' in occ_dir for occ_dir in occ_dirs]
-            self.occluders = torch.empty(0, 4, 224, 224)
+            self.occluders = torch.empty(0, 4, D.image_size, D.image_size)
             for tensor_path in tensor_paths:
                 occluder = torch.load(tensor_path)
                 if occluder.ndim == 3:

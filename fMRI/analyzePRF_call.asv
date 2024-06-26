@@ -1,12 +1,15 @@
 % function to call analyze PRF Retinotopy
 
 % for debugging
-% addpath(genpath('/home/tonglab/david/repos/mrTools-4.8.0.0'));
-% addpath(genpath('/home/tonglab/david/repos/analyzePRF'));
-% funcs = {'/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-3T1/concatenated_before_prf/timeseries.nii.gz'};
-% mask = '/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/ROIs/sub-M015/ses-3T1/mask_analyzed.nii.gz';
-% outdir = '/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-3T1/concatenated_before_prf';
-% analyzePRF_call(funcs, mask, outdir, 2, 1)
+addpath(genpath('/home/tonglab/david/repos/mrTools-4.8.0.0'));
+addpath(genpath('/home/tonglab/david/repos/analyzePRF'));
+funcs = {'/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-3T1/concatenated_before_prf/timeseries.nii.gz'};
+mask = '/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/ROIs/sub-M015/ses-3T1/mask_analyzed.nii.gz';
+outdir = '/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-3T1/concatenated_before_prf';
+analyzePRF_call(funcs, mask, outdir, 2, 1)
+% funcs={'/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-7T1/mean_before_prf/timeseries.nii.gz'};
+% mask='/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/ROIs/sub-M015/ses-7T1/mask_analyzed.nii.gz';
+% outdir='/mnt/NVMe2_1TB/p013_retinotopyTongLab/derivatives/pRF/sub-M015/ses-7T1/mean_before_prf';
 % TR=2;
 % remove_outliers=1;
 
@@ -56,7 +59,7 @@ function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
     
         func = funcs{f};
         
-        disp(['Loading timeseries data from ', func])
+        disp(['Handling outliers for ', func])
 
         % unzip if necessary and flatten spatial dimensions
         if strcmp(func(end-2:end), '.gz')
@@ -68,7 +71,6 @@ function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
 
         % handle outliers
         if remove_outliers
-            disp('Removing outliers')
             outlier_cutoff = 3; % in SD's for each voxel
             all_outlier = [];
             for i = vxs
@@ -84,7 +86,7 @@ function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
         end
         % resample to 1Hz to match stimulus (following example1.m)
         fdata_resampled = tseriesinterp(fdata_flat,2,1,2); % for TR = 2
-        data{f} = double(fdata_resampled);
+        data{f} = fdata_resampled;
 
         % repeat stimulus if runs are concatenated
         num_runs = size(fdata_resampled, 2) / 300;
@@ -96,7 +98,7 @@ function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
     if isempty(gcp)
         parpool;
     end
-    opts = struct('seedmode', 2, 'vxs', vxs, 'hrf', HRF_doubleGamma', ...
+    opts = struct('seedmode', 0, 'vxs', vxs, 'hrf', HRF_doubleGamma', ...
         'display', 'off');
     disp('Beginning pRF mapping')
     prf = analyzePRF(stimuli, data, 1, opts);
