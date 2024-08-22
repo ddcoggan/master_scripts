@@ -13,6 +13,40 @@ import torchvision.transforms.functional as F
 
 class Occlude:
 
+    """
+    This class is used to augment images with occlusion. It can be used in
+    the same way as any torch vision transform, and is compatible with the
+    Compose class. The occluder images are loaded from disk and a separate
+    transform is applied before they are superimposed on the input image.
+    Args:
+        D: A SimpleNamespace object containing the dataset configuration.
+        This must contain the following attributes:
+            image_size: The size of the input images
+            Occlusion: A SimpleNamespace object containing the occlusion
+                configuration. This must contain the following attributes:
+                    form: The form of the occluder as a string, or list
+                        thereof. Strings must match one of the directory names
+                        in the occlusion dataset, e.g. 'mudSplash'.
+                    probability: The probability (0. - 1.) that the occlusion
+                        transform is applied to an image, e.g 0.8 will
+                        occlude ~80% of the inputs.
+                    visibility: The approximate proportion of the image that is
+                        to remain visible, i.e. 1. - occluder coverage,
+                        or list thereof.
+                    color: The color of the occluder, or list thereof. This can
+                        be a tuple array of RGB values (0-255) or 'random' to
+                        select random RGB values for each occluder. This
+                        attibute is ignored for occluder forms with texture,
+                        e.g. 'naturalTextured'.
+                Note: if a list is submitted, the occluder for each input image
+                will be configured by sampling randomly from the list.
+        preload: If 'paths', occluder images are loaded from disk at runtime.
+            If 'tensors', occluder images are loaded from memory at runtime.
+            The 'tensors' option is currently in development and is not
+            recommended to use unless you want to complete development and
+            test it yourself.
+    """
+
     def __init__(self, D=None, preload='paths'):
 
         self.D = D
@@ -101,16 +135,16 @@ class Occlude:
             occluder = occluder.clip(0,1)
 
 
-            # set occluder colour unless texture is used
+            # set occluder color unless texture is used
             if not self.textured[occluder_idx]:
 
-                # if multiple colours requested, select one at random
-                if type(O.colour) == list:
-                    fill_col = O.colour[torch.randint(len(O.colour),(1,))]
+                # if multiple colors requested, select one at random
+                if type(O.color) == list:
+                    fill_col = O.color[torch.randint(len(O.color),(1,))]
                 else:
-                    fill_col = O.colour
+                    fill_col = O.color
 
-                # if colour is specified as RGB, convert to tensor and normalise
+                # if color is specified as RGB, convert to tensor and normalise
                 if fill_col == 'random':
                     fill_rgb = torch.rand((3,))
                 else:
@@ -118,7 +152,7 @@ class Occlude:
                     if max(fill_rgb) > 1:
                         fill_rgb /= 255
 
-                # colourize
+                # colorize
                 occluder[:3] += fill_rgb[:, None, None]
 
 
