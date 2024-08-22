@@ -4,7 +4,7 @@ import sys
 import torch.nn as nn
 import math
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(op.expanduser('~/david/master_scripts/DNN'))
 import zoo
 from torchvision import models
 
@@ -20,8 +20,11 @@ def get_model(model_name, kwargs):
 		try:
 			model = getattr(zoo, model_name)(**kwargs)
 		except:
-			UserWarning('kwargs not accepted for this model, ignoring...')
-			model = getattr(zoo, model_name)()
+			try:
+				model = getattr(zoo, model_name)(kwargs)
+			except:
+				UserWarning('kwargs not accepted for this model, ignoring...')
+				model = getattr(zoo, model_name)()
 
 	# random initialization
 	for mod in model.modules():

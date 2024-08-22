@@ -8,12 +8,9 @@ import torchvision.transforms as transforms
 from itertools import product as itp
 
 """
-notes over previous version
-backward convtransposes performed for all layers
-single convolutional layer combining f, l, b signals
-zero tensors for l and b signals are created if they are not passed
+notes over previous version:
 no padding to stop edge artifacts
-no pooling, 
+no pooling, just stride 2 convolutions
 """
 
 class Identity(nn.Module):
@@ -24,9 +21,9 @@ class LGN(nn.Module):
     
     def __init__(self, channels, kernel_size=7, stride=1, input_size=224,
                  num_scales=7, max_scale=2, min_scale=1):
-
         super().__init__()
 
+        # parameters
         self.ic, self.oc = channels
         self.kernel_size = kernel_size
         self.stride = stride
@@ -35,52 +32,23 @@ class LGN(nn.Module):
         self.max_scale = max_scale
         self.min_scale = min_scale
 
-        # feed forward convolutions at various eccentricities
-        self.scales = torch.linspace(max_scale, min_scale, num_scales)
-        self.xforms = nn.ModuleList([transforms.Resize(
-            int(input_size // scale), antialias=True) for scale in self.scales])
-        self.resize = transforms.Resize(input_size//stride, antialias=True)
-        self.windows = torch.linspace(0, input_size // (2 * stride),
-                                      num_scales + 1, dtype=torch.int)[:-1]
-
-        # operations
-        self.fb = nn.Conv2d(self.ic * 2, self.ic, kernel_size=1, bias=False)
+        # layers
         self.conv = nn.Conv2d(self.ic, self.oc, kernel_size=kernel_size,
                               stride=stride, padding=3, bias=False)
         self.norm = nn.GroupNorm(16, self.oc)
-        self.nonlin = nn.ReLU()
-
-        # allow for retrieval with forward hook
-        self.f = Identity()
+        self.nonlin = nn.LeakyReLU()
+        self.f = Identity()  # allow for retrieval with forward hook
 
 
     def forward(self, inputs):
 
         f, _, b = inputs
-
-        # combine image with feedback signals
-        b = torch.zeros_like(f) if b is None else b
-        f = self.fb(torch.concat([f, b], dim=1))
-
-        # feed forward
-        for transform, w in zip(self.xforms, self.windows):
-            temp = transform(f)  # shrink image depending on eccentricity
-            temp = self.conv(temp)  # apply convolution
-            temp = self.resize(temp)  # grow back to original size
-            if w == 0:
-                f_out = temp
-            else:
-                f_out[..., w:-w, w:-w] = temp[..., w:-w, w:-w]
-
-        # final nonlin
-        f = self.nonlin(f_out)
-
-        # allow for retrieval with forward hook
+        f = f + 0 if b is None else f + b  # combine image with feedback signals
+        f = self.conv(f)
+        f = self.nonlin(f)
         f = self.f(f)
-        l = None
-        b = None
 
-        return f, l, b
+        return f, None, None
 
 
 class CogBlock(nn.Module):
@@ -97,33 +65,30 @@ class CogBlock(nn.Module):
         self.out_channels = oc = channels[2]
         self.stride = stride
         self.scale = scale
-        sc = oc * scale
-
-        # integration convolutions
-        self.flb = nn.Conv2d(ic * 3, ic, kernel_size=1, bias=False)
+        sc = ic * scale
 
         # feed forward connections
-        self.conv_skip = nn.Conv2d(oc, oc, kernel_size=1, stride=2, bias=False)
+        self.conv_skip = nn.Conv2d(ic, oc, kernel_size=1, stride=2, bias=False)
         self.norm_skip = nn.GroupNorm(16, oc)
 
-        self.conv1 = nn.Conv2d(oc, sc, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv2d(ic, sc, kernel_size=1, bias=False)
         self.norm1 = nn.GroupNorm(16, sc)
-        self.nonlin1 = nn.ReLU()
+        self.nonlin1 = nn.LeakyReLU()
 
         self.conv2 = nn.Conv2d(sc, sc, kernel_size=kernel_size, stride=stride,
                                padding=kernel_size//2, bias=False)
         self.norm2 = nn.GroupNorm(16, sc)
-        self.nonlin2 = nn.ReLU()
+        self.nonlin2 = nn.LeakyReLU()
 
         self.conv3 = nn.Conv2d(sc, oc, kernel_size=1, bias=False)
         self.norm3 = nn.GroupNorm(16, oc)
-        self.nonlin3 = nn.ReLU()
+        self.nonlin3 = nn.LeakyReLU()
 
         # lateral connection
         self.conv_lat = nn.ConvTranspose2d(oc, ic, kernel_size=kernel_size,
             stride=stride, padding=1, output_padding=1, bias=False)
         self.norm_lat = nn.GroupNorm(16, ic)
-        self.nonlin_lat = nn.ReLU()
+        self.nonlin_lat = nn.LeakyReLU()
 
         # backward connection
         if self.prev_channels == 3:
@@ -134,7 +99,7 @@ class CogBlock(nn.Module):
             self.conv_back = nn.ConvTranspose2d(oc, pc, kernel_size=5, stride=4,
                 padding=1, output_padding=1, bias=False)
         self.norm_back = nn.GroupNorm(min(16, pc), pc)
-        self.nonlin_back = nn.ReLU()
+        self.nonlin_back = nn.LeakyReLU()
         
         # allow for retrieval with forward hook
         self.f = Identity()
@@ -147,9 +112,8 @@ class CogBlock(nn.Module):
         f, l, b = inputs
 
         # combine with lateral and feed back signals
-        l = torch.zeros_like(f) if l is None else l
-        b = torch.zeros_like(f) if b is None else b
-        f = self.flb(torch.concat([f, l, b], dim=1))
+        f = f + 0 if l is None else f + l
+        f = f + 0 if b is None else f + b
 
         # skip connection
         skip = self.conv_skip(f)
@@ -180,13 +144,13 @@ class CogBlock(nn.Module):
         b = self.nonlin_back(b)
 
         # combine with skip, final nonlin
-        f += skip
+        f = f + skip
         f = self.nonlin3(f)
         
         # allow for retrieval with forward hook
-        #f = self.f(f)
-        #l = self.l(l)
-        #b = self.b(b)
+        f = self.f(f)
+        l = self.l(l)
+        b = self.b(b)
 
         return f, l, b
 
@@ -215,26 +179,36 @@ class CogDecoder(nn.Module):
 
     def forward(self, inp):
 
-        x = self.avgpool(inp)
-        x = self.flatten(x)
+        f = self.avgpool(inp)
+        f = self.flatten(f)
 
         for layer in range(self.head_depth):
-            x = getattr(self, f'linear_{layer + 1}')(x)
+            f = getattr(self, f'linear_{layer + 1}')(f)
             if layer < self.head_depth - 1:
-                x = getattr(self, f'nonlin_{layer + 1}')(x)
+                f = getattr(self, f'nonlin_{layer + 1}')(f)
 
-        x = self.f(x)
+        f = self.f(f)
 
-        return x
+        return f
+
+def count_states(states):
+    for layer, cycles in states.items():
+        for cycle, connections in cycles.items():
+            if type(connections) is dict:
+                for connection, tensor in connections.items():
+                    if tensor is not None:
+                        print(f'{layer}: {cycle}: {connection}: {tensor.shape}')
+            else:
+                print(f'{layer}: {cycle}: {connections.shape}')
 
 
 class CogNet(nn.Module):
 
-    def __init__(self, cycles=4):
+    def __init__(self, cycles=5):
         super().__init__()
 
         self.cycles = cycles
-        chn = [3,64,64,64,64,64]
+        chn = [3,32,64,128,256,512]
         hd = 2
         hw = 3
 
@@ -259,11 +233,11 @@ class CogNet(nn.Module):
 
         for c in range(cycles):
 
-            cycle = f'cyc{c:02}'
-            prev_cycle = f'cyc{c-1:02}'
+            cur_cyc = f'cyc{c:02}'
+            prv_cyc = f'cyc{c-1:02}'
             
             # if image, reinput at each cycle; if movie, input frame sequence
-            states['input'][cycle]['f'] = inp if len(inp.shape) == 4 else inp[c]
+            states['input'][cur_cyc]['f'] = inp if len(inp.shape) == 4 else inp[c]
             
             for cur_blk in blocks[:-1]:
 
@@ -272,9 +246,9 @@ class CogNet(nn.Module):
                 nxt_blk = [*blocks, None][blocks.index(cur_blk) + 1]
 
                 # collate inputs
-                f = states[prv_blk][cycle]['f']
-                l = states[cur_blk][prev_cycle]['l'] if c else None
-                b = states[nxt_blk][prev_cycle]['b'] if (
+                f = states[prv_blk][cur_cyc]['f']
+                l = states[cur_blk][prv_cyc]['l'] if c else None
+                b = states[nxt_blk][prv_cyc]['b'] if (
                         c and cur_blk != 'IT') else None
                 inputs = [f, l, b]
 
@@ -282,35 +256,12 @@ class CogNet(nn.Module):
                 outputs = getattr(self, cur_blk)(inputs)
 
                 # store outputs
-                states[cur_blk][cycle] = {k: v for k, v in zip('flb', outputs)}
+                states[cur_blk][cur_cyc] = {k: v for k, v in zip('flb', outputs)}
             
-            states['decoder'][cycle] = self.decoder(states['IT'][cycle]['f'])
+            states['decoder'][cur_cyc]['f'] = self.decoder(outputs[0])
 
-        return states['decoder'][cycle]
+        return states['decoder'][cur_cyc]['f']
 
-
-# plot window borders with each scale a different color (rainbow)
-def plot_windows(LGN, outdir):
-
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
-    os.makedirs(outdir, exist_ok=True)
-
-    # input windows
-    fig, ax = plt.subplots()
-    input_size = LGN.input_size
-    ax.imshow(torch.zeros(3, input_size, input_size).permute(1, 2, 0))
-    colors = plt.cm.rainbow(torch.linspace(0, 1, LGN.num_scales))
-    for w, win in enumerate(LGN.windows):
-        winsize = LGN.input_size - (2*win)
-        rect = patches.Rectangle((win, win), winsize, winsize,
-                                 linewidth=1, facecolor=colors[w])
-        ax.add_patch(rect)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.spines[['top','left','bottom','right']].set_visible(False)
-    plt.savefig(op.join(outdir, 'input_windows.png'))
-    plt.close()
 
 if __name__ == "__main__":
 
@@ -323,10 +274,13 @@ if __name__ == "__main__":
     import torchvision.transforms as transforms
     from torchvision.datasets import ImageFolder
     from torch.utils.data import DataLoader
+    import torchinfo
 
-    model = CogNet(cycles=10)
-    plot_windows(model.LGN, op.expanduser(
-                 f'~/david/models/cognet_v14/xform-cont/window_plots'))
+
+    model = CogNet(cycles=5)
+
+
+    print(torchinfo.summary(model, input_size=(1, 3, 224, 224)))
 
     sys.path.append(op.expanduser('~/david/master_scripts/image'))
     from image_processing import tile

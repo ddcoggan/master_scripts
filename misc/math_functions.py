@@ -11,5 +11,34 @@ def sigmoid(x, L, x0, k, b):
     :return: output values
     '''
     y_hat = L / (1 + np.exp(-k * (x - x0))) + b
-    return (y_hat)
+    return y_hat
 
+
+def gamma(x, a, b):
+    '''
+    :param x: input values
+    :param a: a is the shape parameter of the gamma distribution
+    :param b: b is the scale parameter of the gamma distribution
+    :return: output values
+    '''
+    y_hat = (b ** a) * (x ** (a - 1)) * np.exp(-b * x) / np.math.gamma(a)
+    return y_hat
+
+
+def gaussian(x, amplitude, xo, sigma, offset):
+    xo = float(xo)
+    a = 1/(2*sigma**2)
+    g = offset + amplitude*np.exp(-a*((x-xo)**2))
+    return g
+
+
+def circular_gaussian(xy, amplitude, xo, yo, sigma, theta, offset):
+    x, y = xy
+    xo = float(xo)
+    yo = float(yo)
+    a = (np.cos(theta)**2)/(2*sigma**2) + (np.sin(theta)**2)/(2*sigma**2)
+    b = -(np.sin(2*theta))/(4*sigma**2) + (np.sin(2*theta))/(4*sigma**2)
+    c = (np.sin(theta)**2)/(2*sigma**2) + (np.cos(theta)**2)/(2*sigma**2)
+    g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo)
+                            + c*((y-yo)**2)))
+    return g.ravel()

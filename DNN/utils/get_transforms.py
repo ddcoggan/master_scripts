@@ -19,9 +19,7 @@ class MultipleViews:
         return [self.transforms[v](inputs) for v in range(self.num_views)]
 
 
-def get_transforms(D=SimpleNamespace()):
-
-    imsize = D.imsize if hasattr(D, 'imsize') else 224
+def get_transforms(D):
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -30,15 +28,15 @@ def get_transforms(D=SimpleNamespace()):
     transforms_train = [
         transforms.ToImage(), 
         transforms.ToDtype(torch.float32, scale=True),
-        transforms.RandomResizedCrop(imsize, antialias=True),
+        transforms.RandomResizedCrop(D.image_size, antialias=True),
         transforms.RandomHorizontalFlip(),
         normalize,
     ]
     transforms_val = [
         transforms.ToImage(), 
         transforms.ToDtype(torch.float32, scale=True),
-        transforms.Resize(imsize, antialias=True),
-        transforms.CenterCrop(imsize),
+        transforms.Resize(D.image_size, antialias=True),
+        transforms.CenterCrop(D.image_size),
         normalize,
     ]
 
@@ -47,7 +45,7 @@ def get_transforms(D=SimpleNamespace()):
         transforms_train = [
             transforms.ToImage(), 
             transforms.ToDtype(torch.float32, scale=True),
-            transforms.RandomResizedCrop(imsize, scale=(0.8,1.0), antialias=True),
+            transforms.RandomResizedCrop(D.image_size, scale=(0.8,1.0), antialias=True),
             transforms.RandomHorizontalFlip(),
             transforms.RandomApply([transforms.ColorJitter(
                 brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2)],
@@ -58,35 +56,25 @@ def get_transforms(D=SimpleNamespace()):
         ]
         transforms_val = transforms_train.copy()
 
-    # add occlusion
+    # create list of transforms for each view
+    transforms_train = [transforms_train.copy() for _ in range(D.num_views)]
+    transforms_val = [transforms_val.copy() for _ in range(D.num_views)]
+    
+    # add occlusion transform
     if hasattr(D, 'Occlusion'):
-        transforms_train.insert(4, Occlude(D))
-        transforms_val.insert(4, Occlude(D))
+        for view in D.Occlusion.views:
+            transforms_train[view].insert(4, Occlude(D))
+            transforms_val[view].insert(4, Occlude(D))
 
     # compose transforms
-    transform_train = transforms.Compose(transforms_train)
-    transform_val = transforms.Compose(transforms_val)
-
-    # create multiple views
-    if hasattr(D, 'num_views') and D.num_views > 1:
-
-        # for views with different transforms, create list of transforms
-        transforms_train = [transforms_train.copy() for _ in range(D.num_views)]
-        transforms_val = [transforms_val.copy() for _ in range(D.num_views)]
-        for view in range(D.num_views):
-            if hasattr(D, 'views_occluded') and view not in D.views_occluded:
-                transforms_train[view].pop(3)
-                transforms_val[view].pop(3)
-
-        # compose transforms
-        transform_train = [transforms.Compose(t) for t in transforms_train]
-        transform_val = [transforms.Compose(t) for t in transforms_val]
-
-        # get views
-        transform_train = MultipleViews(transform_train)
-        transform_val = MultipleViews(transform_val)
-
-    return transform_train, transform_val
+    transforms_train = [transforms.Compose(t) for t in transforms_train]
+    transforms_val = [transforms.Compose(t) for t in transforms_val]
+    
+    # wrap in MultipleViews object
+    transforms_train = MultipleViews(transforms_train)
+    transforms_val = MultipleViews(transforms_val)
+    
+    return transforms_train, transforms_val
 
 
 

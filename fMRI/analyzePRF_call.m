@@ -10,7 +10,7 @@
 % TR=2;
 % remove_outliers=1;
 
-function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
+function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers, stim)
 
     
     % unzip mask if necessary, flatten, and list voxel indices
@@ -25,24 +25,29 @@ function analyzePRF_call(funcs, mask, outdir, TR, remove_outliers)
 
     % stimulus 
     disp('Loading stimulus')
-    kwr = load('kayWedgeRing.mat');
+    if strcmp(stim, 'wedge_ring') 
+        kay = load('kayWedgeRing.mat');
+        indices = kay.wedgeringindices;
+    else
+        kay = load('kayMultibar.mat');
+        indices = kay.multibarindices;
     stim_radius_deg = 7;
     ppd = 51;
 	total_dur = 300;
 	fps = 15;
 	stim_size_pix = round(ppd * stim_radius_deg * 2);
-	mask_size_pix = round(size(kwr.masks,1));
+	mask_size_pix = round(size(kay.masks,1));
     resize_factor = stim_size_pix / mask_size_pix;
     stimulus = zeros(stim_size_pix, stim_size_pix, total_dur);
 	for n = 1:total_dur
         first = (n-1)*fps + 1;
         last = first + fps - 1;
         frame_idcs = first:last;
-        frames = zeros(size(kwr.masks, 1), size(kwr.masks,2), fps);
+        frames = zeros(size(kay.masks, 1), size(kay.masks,2), fps);
         for f = 1:fps
-            i = kwr.wedgeringindices(frame_idcs(f));
+            i = indices(frame_idcs(f));
             if i > 0
-                frames(:, :, f) = kwr.masks(:, :, i);
+                frames(:, :, f) = kay.masks(:, :, i);
             end
         end
         average_frame = mean(frames, 3);

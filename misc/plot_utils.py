@@ -6,6 +6,7 @@ def export_legend(legend, filename="legend.pdf"):
 	fig.canvas.draw()
 	bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
 	fig.savefig(filename, dpi=300, bbox_inches=bbox)
+	plt.close()
 
 
 def make_legend(outpath, labels, markers=None, colors=None,

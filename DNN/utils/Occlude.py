@@ -29,27 +29,27 @@ class Occlude:
             transforms.RandomCrop(D.image_size)])
 
         # ensure occluders and visibilities are lists
-        occ_types = [O.type] if isinstance(O.type, str) else O.type
+        occ_forms = [O.form] if isinstance(O.form, str) else O.form
         visibilities = [O.visibility] if \
             type(O.visibility) in [str, int, float] else O.visibility
 
         # specify occluders at instantiation for better training speed
         occ_dirs = []
-        for ot, vis in itertools.product(occ_types, visibilities):
-            if ot != 'unoccluded':
+        for of, vis in itertools.product(occ_forms, visibilities):
+            if of != 'unoccluded':
 
                 # for occluders where visibility is not controllable
-                if ot.startswith('natural') and 'Cropped' not in ot:
+                if of.startswith('natural') and 'Cropped' not in of:
                     occ_dirs += \
-                        glob.glob(f'{occluder_dir}/{ot}')
+                        glob.glob(f'{occluder_dir}/{of}')
 
                 # for occluders where visibility is controllable
                 else:
                     if vis == 'random':
-                        occ_dirs += glob.glob(f'{occluder_dir}/{ot}/*')
+                        occ_dirs += glob.glob(f'{occluder_dir}/{of}/*')
                     else:
                         cov = round((1 - vis) * 100)  # dirs represent % coverage
-                        occ_dirs += glob.glob(f'{occluder_dir}/{ot}/{cov}')
+                        occ_dirs += glob.glob(f'{occluder_dir}/{of}/{cov}')
 
         # track which occluders should be presented with texture
         self.textured = []
@@ -80,7 +80,7 @@ class Occlude:
 
         O = self.D.Occlusion
 
-        if O.type != 'unoccluded' and torch.rand(1) < O.prop_occluded:
+        if O.form != 'unoccluded' and torch.rand(1) < O.probability:
 
             # method 1: load occluder image from disk
             if self.preload == 'paths':
@@ -147,3 +147,6 @@ class Occlude:
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"
+        
+        
+        

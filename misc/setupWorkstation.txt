@@ -133,6 +133,7 @@ curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo 
 && sudo apt install gh -y
 gh auth login
 ** follow steps **
+git config --global init.defaultBranch main  # prevents warning and names primary branch of new repos as "main"
 
 # always clone as ssh not http, eg:
 git clone git@github.com:ddcoggan/master_scripts
@@ -142,17 +143,18 @@ ssh -T git@github.com # check if you get asked for password and weren't expectin
 refresh # try if you are still asked for a password and werent expecting it
 
 # start new repo
-git init -b main
-git add journal && git commit -m "initial commit"
-gh repo create p019_objectSpace --private --source=. --remote=upstream --push
-
+git init
+git branch -M main
+git add . && git commit -m "initial commit"
+gh repo create p019_objectSpace --private --source=. --remote=upstream
+git push
 
 # for my workstation
 # git commands
 alias multipull="find /mnt/HDD12TB/projects/. -maxdepth 2 -name .git -type d | rev | cut -c 6- | rev | xargs -I {} git -C {} pull;
 find $HOME/Dave/. -maxdepth 2 -name .git -type d | rev | cut -c 6- | rev | xargs -I {} git -C {} pull"
 
-alias multipush="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git add .; git commit -m '$(date)'; git push;
+alias multipush="printf '\n\nmasterScripts\n'; cd $HOME/Dave/masterScripts; git add .; git commit -m $(date); git push;
 printf '\n\np022_occlusion\n'; cd /mnt/HDD12TB/projects/p022_occlusion; git add DNN/analysis/scripts/.; git commit -m '$(date)'; git push;
 printf '\n\np021_convParamSpace\n'; cd /mnt/HDD12TB/projects/p021_convParamSpace; git add scripts/.; git commit -m '$(date)'; git push;
 printf '\n\np019_objectSpace\n'; cd /mnt/HDD12TB/projects/p019_objectSpace; git add analysis/scripts/.; git commit -m '$(date)'; git push;"

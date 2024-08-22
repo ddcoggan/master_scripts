@@ -1,83 +1,6 @@
 #!/usr/bin/python
 """
-Script supports assorted image processing capabilities:
- * Phase scrambling (applyPhaseScram)
- * Applying soft windows (applySoftWindow)
- * Making amplitude / phase image composites (combineAmplitudePhase)
- * Fourier filtering (fourierFilter)
- * Making amplitude masks (makeAmplitudeMask)
- * Making average hybrids (makeHybrid)
- * Overlaying a fixation cross on an image (overlayFixation)
- * Plotting average amplitude spectra (plotAverageAmpSpec)
-
-The script requires the following python libraries - you will need to download
-and install each of these:
- * numpy (http://www.numpy.org/)
- * scipy (http://www.scipy.org/)
- * Python Image Library (PIL) (http://www.pythonware.com/products/pil/)
- * matplotlib (http://matplotlib.org/)
-Note - if you are working at YNiC these libraries are already installed.
-
-To use this script you should open a terminal, change directory to where you
-have this script saved in, then start a python session and import the desired
-functions from this script:
-    cd /directory/containing/this/script/
-    ipython
-    # (wait for ipython to start)
-    import imageprocessing
-
-(You could also write the python commands into your own python script saved in
-the same directory as the imageprocessing.py script).
-
-
-Each function contains some brief help information and usage examples.
-Typing help(nameOfFunction) will print this help information to the
-terminal, e.g. the following code will print the help information for
-the overall module that you are reading now:
-    import imageprocessing
-    help(imageprocessing)
-
-(Note - printing the help information for the overall module will also list the
-available classes and functions within this script).
-
-
-You can also get help information for a specific class or function within this
-script, e.g. this code will print the help information for the applyPhaseScram
-function in this script:
-    from imageprocessing import applyPhaseScram
-    help(applyPhaseScram)
-
-
-*** PROTIP #1 ***
-A convenient way to save your images is with the imsave function in the
-scipy.misc module, for instance:
-    import numpy as np
-    import scipy.misc
-    im = (np.random.rand(256,256,3) * 255).astype(np.uint8)
-    scipy.misc.imsave('myimage.png', im)
-
-*** PROTIP #2 ***
-You can use the imshow function in the matplotlib.pyplot module to display your
-images from within python (useful when debugging!), for instance:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    plt.ion() # turn on interactive plotting
-    # For an RGB image:
-    rgb = (np.random.rand(256,256,3) * 255).astype(np.uint8)
-    plt.imshow(rgb)
-    # For grayscale, specify gray colourmap
-    gray = (np.random.rand(256,256) * 255).astype(np.uint8)
-    plt.imshow(gray, cmap = 'gray')
-
-*** PROTIP #3 ***
-If you want to avoid having to keep multiple copies of this script in each
-directory you need it for, you can instead keep a single copy in a central
-location and add this to the python system path before you import it.  This will
-allow you to import the script regardless of what your current directory is:
-    import sys
-    sys.path.append('/directory/containing/this/script/')
-    import imageprocessing # now works from any directory!
-
+Script supports assorted image processing capabilities
 """
 
 ### Import statements
@@ -90,20 +13,8 @@ import scipy.signal
 import matplotlib.pyplot as plt
 import math
 import itertools
-# PIL Image module needs some special handling to support different platforms
-try:
-    import Image, ImageFile # will work on most installations
-except ImportError:
-    from PIL import Image, ImageFile # if installed via pillow (e.g. if on amd64)
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-import math
+from PIL import Image
 
-### Base functions
-"""
-These are assorted convenience functions that are be used by other classes
-and functions within this script.  They are unlikely to be of use to you
-directly, but if you do want them you can use them as per any other function.
-"""
 
 def _imread(image):
     """
@@ -168,12 +79,9 @@ def _plotfftinfo(imsize):
     return fftinfo
 
 
-##### BEGIN MAIN SCRIPT ######
-
-### Function definitions
-
-
-def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base_gap=0, colgap=None, colgapfreq=None, rowgap=None, rowgapfreq=None, bgcol=(255,255,255)):
+def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False,
+         base_gap=0, colgap=None, colgapfreq=None, rowgap=None, rowgapfreq=None,
+         bgcol=(0,0,0,0)):
     
     # TODO: place smaller images in center of window rather than top-left
     
@@ -202,7 +110,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
     # width of each column is as wide as the widest image
     col_coords = []
     col_widths = []
-    cumulative_width = 0
+    cumulative_width = base_gap
     for col in range(num_cols):
 
         col_images = [images[x] for x in image_locations[:, col]]
@@ -224,7 +132,7 @@ def tile(image_paths, out_path, num_rows=None, num_cols=None, by_col=False, base
     # height of each row is as tall as the tallest image
     row_coords = []
     row_heights = []
-    cumulative_height = 0
+    cumulative_height = base_gap
     for row in range(num_rows):
 
         row_images = [images[x] for x in image_locations[row, :]]

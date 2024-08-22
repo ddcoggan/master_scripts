@@ -16,7 +16,8 @@ def config_to_text(CFG):
 
     os.makedirs(CFG.M.model_dir, exist_ok=True)
     config_txt = f'{datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}\n\n'
-    for param_type, param_space in zip(['model', 'dataset', 'training'], [CFG.M, CFG.D, CFG.T]):
+    for param_type, param_space in zip(['model', 'dataset', 'training'],
+                                       [CFG.M, CFG.D, CFG.O]):
         config_txt += f'### {param_type} ###\n'
         for param_name, param in param_space.__dict__.items():
             if not param_name.startswith('_') and param_name not in ['model']:
@@ -39,5 +40,5 @@ def config_to_text(CFG):
 
 if __name__ == '__main__':
 
-    config = '/mnt/HDD2_16TB/projects/p022_occlusion/in_silico/models/cornet_s_custom/deep-head_occ-beh/config.pkl'
+    config = '/home/tonglab/david/models/cornet_s_custom'
     #config_to_text(config)

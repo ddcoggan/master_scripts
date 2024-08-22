@@ -1,5 +1,6 @@
 import os.path as op
 import sys
+from types import SimpleNamespace
 
 from .cornet_r import CORnet_R as cornet_r
 from .cornet_rt import CORnet_RT as cornet_rt
@@ -38,8 +39,10 @@ from .cognet.cognet_v11 import CogNet as cognet_v11
 from .cognet.cognet_v12 import CogNet as cognet_v12
 from .cognet.cognet_v13 import CogNet as cognet_v13
 from .cognet.cognet_v14 import CogNet as cognet_v14
+from .cognet.cognet_v14pt5 import CogNet as cognet_v14pt5
 from .GaborFilterBank import GaborFilterBank
 from .alexnet_V1 import AlexNet as alexnet_V1
+
 #from . import segmentation
 #from . import detection
 #from . import video
@@ -47,3 +50,11 @@ from .alexnet_V1 import AlexNet as alexnet_V1
 
 sys.path.append(op.expanduser('~/david/repos/PredNet_pytorch'))
 from prednet import PredNet as prednet
+
+sys.path.append(op.expanduser('~/david/repos/pix2pix/gan'))
+from generator import UnetGenerator as pix2pix
+
+sys.path.append('/home/tonglab/david/repos/BLT_recurrent_models')
+from models.build_model import build_model as blt
+
+
